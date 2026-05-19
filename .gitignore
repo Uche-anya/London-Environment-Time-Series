@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+.astro/
+logs/
+airflow.db
+airflow.cfg
+
+# Data outputs
+data/bronze/
+data/silver/
+data/gold/
+data/raw/
+
+# OS/editor
+.DS_Store
+.vscode/

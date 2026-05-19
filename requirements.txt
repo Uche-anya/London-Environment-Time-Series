@@ -1,0 +1,7 @@
+duckdb
+pyarrow
+pandas
+requests
+python-dotenv
+psycopg2-binary
+great_expectations
