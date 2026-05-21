@@ -20,3 +20,9 @@ data/raw/
 # OS/editor
 .DS_Store
 .vscode/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

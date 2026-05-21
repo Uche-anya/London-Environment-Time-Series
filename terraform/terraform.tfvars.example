@@ -1,0 +1,5 @@
+aws_region = "eu-north-1"
+
+project_name = "london-environment-pipeline"
+
+s3_bucket_name = "replace-with-your-globally-unique-s3-bucket-name"

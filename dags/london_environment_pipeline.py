@@ -10,16 +10,20 @@ DEFAULT_ARGS = {
     "retries": 1,
 }
 
-
 with DAG(
     dag_id="london_environment_timeseries_pipeline",
-    description="London air quality and weather pipeline using DuckDB, Parquet, GX Core, TimescaleDB and Grafana.",
+    description="London air quality and weather batch pipeline using S3, DuckDB, Parquet, GX Core, TimescaleDB and Grafana.",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 1, 1),
     schedule=None,
     catchup=False,
-    tags=["air-quality", "weather", "duckdb", "gx", "timeseries"],
+    tags=["air-quality", "duckdb", "gx", "timeseries"],
 ) as dag:
+
+    extract_raw_s3 = BashOperator(
+        task_id="extract_raw_s3",
+        bash_command="cd /opt/airflow && python pipelines/extract_raw_s3.py",
+    )
 
     extract_weather = BashOperator(
         task_id="extract_weather",
@@ -66,9 +70,9 @@ with DAG(
         bash_command="cd /opt/airflow && python pipelines/load_gold_to_timescale.py",
     )
 
-    extract_weather >> create_bronze_weather >> create_silver_weather
+    extract_raw_s3 >> create_bronze_air_quality >> create_silver_air_quality
 
-    create_bronze_air_quality >> create_silver_air_quality
+    extract_weather >> create_bronze_weather >> create_silver_weather
 
     [create_silver_air_quality, create_silver_weather] >> create_gold
     create_gold >> validate_gold_with_gx >> create_timescale_tables >> load_gold_to_timescale

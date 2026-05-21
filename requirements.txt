@@ -1,7 +1,9 @@
 duckdb
 pyarrow
 pandas
+boto3
 requests
 python-dotenv
 psycopg2-binary
 great_expectations
+pytest

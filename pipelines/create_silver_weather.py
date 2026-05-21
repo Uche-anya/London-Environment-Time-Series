@@ -2,7 +2,6 @@ from pathlib import Path
 
 import duckdb
 
-
 BRONZE_WEATHER_BASE = Path("data/bronze/weather")
 SILVER_WEATHER_BASE = Path("data/silver/weather")
 
@@ -41,7 +40,9 @@ def create_silver_weather() -> None:
                     TRY_CAST(pressure_msl AS DOUBLE) AS pressure_msl,
                     TRY_CAST(wind_speed_10m AS DOUBLE) AS wind_speed_10m,
                     EXTRACT(YEAR FROM CAST(recorded_at AS TIMESTAMP)) AS year,
-                    source_name
+                    source_name,
+                    source_year,
+                    source_file
                 FROM read_parquet('{parquet_file.as_posix()}')
                 WHERE recorded_at IS NOT NULL
             )

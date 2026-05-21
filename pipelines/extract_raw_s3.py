@@ -1,7 +1,6 @@
 import json
 import os
 from pathlib import Path
-
 import requests
 from dotenv import load_dotenv
 
@@ -36,37 +35,10 @@ def fetch_weather_for_year(year: int) -> dict:
     )
 
     print(f"Fetching Open-Meteo weather data for {year}")
-    print(url)
-
     response = requests.get(url, timeout=120)
     response.raise_for_status()
 
-    data = response.json()
-
-    if "hourly" not in data:
-        raise ValueError(
-            f"Open-Meteo response for {year} does not contain hourly data: {data}"
-        )
-
-    required_hourly_fields = [
-        "time",
-        "temperature_2m",
-        "relative_humidity_2m",
-        "precipitation",
-        "pressure_msl",
-        "wind_speed_10m",
-    ]
-
-    missing_fields = [
-        field for field in required_hourly_fields if field not in data["hourly"]
-    ]
-
-    if missing_fields:
-        raise ValueError(
-            f"Open-Meteo response for {year} is missing fields: {missing_fields}"
-        )
-
-    return data
+    return response.json()
 
 
 def save_weather_json(year: int, data: dict) -> None:
@@ -75,8 +47,6 @@ def save_weather_json(year: int, data: dict) -> None:
 
     output_file = output_dir / f"london_weather_{year}.json"
 
-    # "w" overwrites the file.
-    # Do not use "a", because append mode can corrupt JSON files.
     with open(output_file, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=2)
 
@@ -87,8 +57,8 @@ def main() -> None:
     years = parse_years()
 
     for year in years:
-        weather_data = fetch_weather_for_year(year)
-        save_weather_json(year, weather_data)
+        data = fetch_weather_for_year(year)
+        save_weather_json(year, data)
 
     print("Weather extraction completed successfully.")
 
