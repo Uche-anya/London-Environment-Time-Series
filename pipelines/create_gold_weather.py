@@ -14,8 +14,6 @@ def create_gold_daily_weather() -> None:
 
     con = duckdb.connect()
 
-    print("Creating gold daily weather metrics...")
-
     con.execute(
         f"""
         COPY (

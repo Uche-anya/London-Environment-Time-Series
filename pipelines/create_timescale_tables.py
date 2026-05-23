@@ -1,6 +1,5 @@
 from src.utils.db import get_postgres_connection
 
-
 def create_tables() -> None:
     conn = get_postgres_connection()
     conn.autocommit = True
