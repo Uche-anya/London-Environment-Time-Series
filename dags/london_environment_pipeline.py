@@ -15,9 +15,10 @@ with DAG(
     description="London air quality and weather batch pipeline using S3, DuckDB, Parquet, GX Core, TimescaleDB and Grafana.",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2025, 1, 1),
-    schedule=None,
+    schedule="0 6 * * 1",
     catchup=False,
-    tags=["air-quality", "duckdb", "gx", "timeseries"],
+    max_active_runs=1,
+    tags=["air-quality", "weather", "s3", "duckdb", "gx", "timeseries"],
 ) as dag:
 
     extract_raw_s3 = BashOperator(
