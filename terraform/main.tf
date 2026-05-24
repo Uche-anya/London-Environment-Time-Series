@@ -170,9 +170,6 @@ resource "aws_security_group" "app_sg" {
 }
 
 
-# -----------------------------
-# EC2 instance
-# -----------------------------
 
 resource "aws_instance" "app_server" {
   ami                    = data.aws_ami.ubuntu.id
@@ -208,10 +205,6 @@ resource "aws_instance" "app_server" {
   }
 }
 
-
-# -----------------------------
-# Elastic IP
-# -----------------------------
 
 resource "aws_eip" "app_eip" {
   instance = aws_instance.app_server.id
