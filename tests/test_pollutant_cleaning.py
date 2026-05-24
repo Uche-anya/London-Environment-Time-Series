@@ -2,13 +2,6 @@ import duckdb
 
 
 def clean_pollutant_value(raw_value: str):
-    """
-    Applies the same cleaning rule used in the silver air-quality layer.
-
-    Negative pollutant values become NULL.
-    Zero and positive values are kept.
-    Invalid text becomes NULL.
-    """
 
     con = duckdb.connect()
 
