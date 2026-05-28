@@ -1,13 +1,40 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import sys
+from pathlib import Path
 
 from airflow import DAG
-from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
+
+from data_quality.validate_gold_gx import main as validate_gold_with_gx_main
+from pipelines.create_bronze_air_quality import create_bronze_air_quality
+from pipelines.create_bronze_weather import create_bronze_weather
+from pipelines.create_gold import main as create_gold_main
+from pipelines.create_silver_air_quality import create_silver_air_quality
+from pipelines.create_silver_weather import create_silver_weather
+from pipelines.create_timescale_tables import main as create_timescale_tables_main
+from pipelines.extract_raw_s3 import main as extract_raw_s3_main
+from pipelines.extract_weather import main as extract_weather_main
+from pipelines.load_gold_to_timescale import main as load_gold_to_timescale_main
+
+
+def run_pipeline(task_callable):
+    """Execute a pipeline task from the project root so relative paths resolve correctly."""
+    import os
+
+    os.chdir(PROJECT_ROOT)
+    sys.path.append(str(PROJECT_ROOT))
+    task_callable()
 
 
 DEFAULT_ARGS = {
     "owner": "uche",
     "depends_on_past": False,
     "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
 }
 
 with DAG(
@@ -21,54 +48,64 @@ with DAG(
     tags=["air-quality", "weather", "s3", "duckdb", "gx", "timeseries"],
 ) as dag:
 
-    extract_raw_s3 = BashOperator(
+    extract_raw_s3 = PythonOperator(
         task_id="extract_raw_s3",
-        bash_command="cd /opt/airflow && python pipelines/extract_raw_s3.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": extract_raw_s3_main},
     )
 
-    extract_weather = BashOperator(
+    extract_weather = PythonOperator(
         task_id="extract_weather",
-        bash_command="cd /opt/airflow && python pipelines/extract_weather.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": extract_weather_main},
     )
 
-    create_bronze_air_quality = BashOperator(
+    create_bronze_air_quality = PythonOperator(
         task_id="create_bronze_air_quality",
-        bash_command="cd /opt/airflow && python pipelines/create_bronze_air_quality.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_bronze_air_quality},
     )
 
-    create_bronze_weather = BashOperator(
+    create_bronze_weather = PythonOperator(
         task_id="create_bronze_weather",
-        bash_command="cd /opt/airflow && python pipelines/create_bronze_weather.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_bronze_weather},
     )
 
-    create_silver_air_quality = BashOperator(
+    create_silver_air_quality = PythonOperator(
         task_id="create_silver_air_quality",
-        bash_command="cd /opt/airflow && python pipelines/create_silver_air_quality.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_silver_air_quality},
     )
 
-    create_silver_weather = BashOperator(
+    create_silver_weather = PythonOperator(
         task_id="create_silver_weather",
-        bash_command="cd /opt/airflow && python pipelines/create_silver_weather.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_silver_weather},
     )
 
-    create_gold = BashOperator(
+    create_gold = PythonOperator(
         task_id="create_gold",
-        bash_command="cd /opt/airflow && python pipelines/create_gold.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_gold_main},
     )
 
-    validate_gold_with_gx = BashOperator(
+    validate_gold_with_gx = PythonOperator(
         task_id="validate_gold_with_gx",
-        bash_command="cd /opt/airflow && python data_quality/validate_gold_gx.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": validate_gold_with_gx_main},
     )
 
-    create_timescale_tables = BashOperator(
+    create_timescale_tables = PythonOperator(
         task_id="create_timescale_tables",
-        bash_command="cd /opt/airflow && python pipelines/create_timescale_tables.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": create_timescale_tables_main},
     )
 
-    load_gold_to_timescale = BashOperator(
+    load_gold_to_timescale = PythonOperator(
         task_id="load_gold_to_timescale",
-        bash_command="cd /opt/airflow && python pipelines/load_gold_to_timescale.py",
+        python_callable=run_pipeline,
+        op_kwargs={"task_callable": load_gold_to_timescale_main},
     )
 
     extract_raw_s3 >> create_bronze_air_quality >> create_silver_air_quality
