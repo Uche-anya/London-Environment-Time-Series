@@ -11,15 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_pipeline(module_name: str, callable_name: str) -> None:
-    """Import and run a single pipeline task at execution time.
-
-    Imports are deferred to task runtime instead of DAG-parse time. The task
-    modules pull in heavy dependencies (duckdb, great_expectations, boto3); if
-    they were imported at the top of this file, Airflow would pay that cost on
-    every DAG parse and exceed the DagBag import timeout. Keeping the top level
-    light lets the DAG parse instantly and load the heavy code only when a task
-    actually runs.
-    """
+   
     os.chdir(PROJECT_ROOT)
     if str(PROJECT_ROOT) not in sys.path:
         sys.path.append(str(PROJECT_ROOT))
