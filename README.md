@@ -243,7 +243,7 @@ Tables and indexes are created by `pipelines/create_timescale_tables.py` (the ru
 
 Grafana connects to TimescaleDB and visualises the gold metrics: average / peak NO₂, average PM2.5, average wind speed, daily pollution trend, daily average temperature, highest pollution day, and completeness metrics. The exported dashboard JSON lives under `grafana/`.
 
-![London Environmental Time-Series Dashboard](docs/dashboard.png)
+![London Environmental Time-Series Dashboard](grafana/dashboard/dashboard.png)
 
 _Grafana dashboard (2022-01-22 → 2026-06-11): pollutant averages/peaks, daily pollution trend, daily average temperature, and the highest key pollution day._
 
