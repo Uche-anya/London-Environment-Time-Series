@@ -27,7 +27,7 @@ The pipeline was first built and tested locally with Astro Airflow and Docker, t
 **Most recent serving-layer state:**
 
 | Table | Rows | Date range |
-|---|---|---|
+| --- | --- | --- |
 | `daily_air_quality_metrics` | ~11,400 | 2022-01-01 → present |
 | `daily_weather_metrics` | ~1,600 | 2022-01-01 → present |
 | `hourly_environment_metrics` | ~272,000 | 2022-01-01 → present |
@@ -67,7 +67,7 @@ Silver air-quality Parquet  ─────────────────�
 ## Tech Stack
 
 | Area | Tool |
-|---|---|
+| --- | --- |
 | Orchestration | Apache Airflow via Astro CLI |
 | Raw Storage | AWS S3 |
 | Transformation | DuckDB |
@@ -130,12 +130,15 @@ Raw → Bronze → Silver → Gold
 ```
 
 ### Raw
+
 Source data kept close to original format (DEFRA CSV from S3, Open-Meteo JSON from the API).
 
 ### Bronze (`data/bronze/`)
+
 Raw files converted to Parquet, keeping most of the original structure and adding lineage columns (`site_name`, `source_year`, `source_file`). Weather JSON is flattened into hourly rows.
 
 ### Silver (`data/silver/`)
+
 Cleaned, standardised and reshaped. Air quality is pivoted from wide DEFRA format into a long analytical shape:
 
 ```text
@@ -152,6 +155,7 @@ Cleaning rules:
 Missing readings are deliberately **not** replaced with zero (that would invent pollution data). The special DEFRA `24:00` timestamp is rolled to `00:00` of the next day.
 
 ### Gold (`data/gold/`)
+
 Analytics-ready datasets:
 
 ```text
@@ -239,6 +243,975 @@ Tables and indexes are created by `pipelines/create_timescale_tables.py` (the ru
 
 Grafana connects to TimescaleDB and visualises the gold metrics: average / peak NO₂, average PM2.5, average wind speed, daily pollution trend, daily average temperature, highest pollution day, and completeness metrics. The exported dashboard JSON lives under `grafana/`.
 
+<details>
+<summary><strong>Full dashboard JSON</strong> — <code>grafana/dashboard/london_environment_dashboard.json</code> (click to expand)</summary>
+
+```json
+{
+  "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "adhbrkz",
+    "namespace": "default",
+    "uid": "d15a5ea1-34b0-487f-a71e-9c962faa95d5",
+    "resourceVersion": "1779196736598006",
+    "generation": 20,
+    "creationTimestamp": "2026-05-19T10:53:14Z",
+    "labels": {
+      "grafana.app/deprecatedInternalID": "3048180673781760"
+    },
+    "annotations": {
+      "grafana.app/createdBy": "user:efmg3v2b4pzi8a",
+      "grafana.app/folder": "",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1+security-01 (9bbe672d)",
+      "grafana.app/updatedBy": "user:efmg3v2b4pzi8a",
+      "grafana.app/updatedTimestamp": "2026-05-19T13:18:56Z"
+    }
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana",
+            "version": "v0",
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "spec": {}
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "builtIn": true
+        }
+      }
+    ],
+    "cursorSync": "Off",
+    "description": "Dashboard showing London Bloomsbury air-quality and weather trends from 2022 to 2025",
+    "editable": true,
+    "elements": {
+      "panel-10": {
+        "kind": "Panel",
+        "spec": {
+          "id": 10,
+          "title": "Highest Key Pollution Day",
+          "description": "Shows the highest daily peak among key public-facing pollutants: NO₂, PM2.5, and O₃.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  reading_date AS \"Date\",\r\n  pollutant AS \"Pollutant\",\r\n  ROUND(avg_value::numeric, 2) AS \"Daily Average\",\r\n  ROUND(max_value::numeric, 2) AS \"Peak Value\",\r\n  'µg/m³' AS \"Unit\",\r\n  ROUND(completeness_pct::numeric, 2) AS \"Completeness %\"\r\nFROM daily_air_quality_metrics\r\nWHERE reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date\r\n  AND pollutant IN ('NO2', 'PM2.5', 'O3')\r\n  AND max_value IS NOT NULL\r\nORDER BY max_value DESC\r\nLIMIT 1;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "Average NO₂ (µg/m³)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  ROUND(AVG(avg_value)::numeric, 2) AS avg_no2\r\nFROM daily_air_quality_metrics\r\nWHERE pollutant = 'NO2'\r\n  AND reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-4": {
+        "kind": "Panel",
+        "spec": {
+          "id": 4,
+          "title": "Peak NO₂ (µg/m³)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  ROUND(MAX(max_value)::numeric, 2) AS peak_no2\r\nFROM daily_air_quality_metrics\r\nWHERE pollutant = 'NO2'\r\n  AND reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-5": {
+        "kind": "Panel",
+        "spec": {
+          "id": 5,
+          "title": "Average PM2.5 (µg/m³)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  ROUND(AVG(avg_value)::numeric, 2) AS avg_pm25\r\nFROM daily_air_quality_metrics\r\nWHERE pollutant = 'PM2.5'\r\n  AND reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-7": {
+        "kind": "Panel",
+        "spec": {
+          "id": 7,
+          "title": "Average Wind Speed (km/h)",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  ROUND(AVG(avg_wind_speed_10m)::numeric, 2) AS avg_wind_speed\r\nFROM daily_weather_metrics\r\nWHERE reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-8": {
+        "kind": "Panel",
+        "spec": {
+          "id": 8,
+          "title": "Daily Pollution Trend (µg/m³)",
+          "description": "Compares daily average NO₂ , PM₂.₅ and O₃ concentrations at London Bloomsbury from 2022 to 2025.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  reading_date AS time,\r\n  AVG(CASE WHEN pollutant = 'NO2' THEN avg_value END) AS \"NO2\",\r\n  AVG(CASE WHEN pollutant = 'PM2.5' THEN avg_value END) AS \"PM2.5\",\r\n  AVG(CASE WHEN pollutant = 'O3' THEN avg_value END) AS \"O3\"\r\nFROM daily_air_quality_metrics\r\nWHERE pollutant IN ('NO2', 'PM2.5', 'O3')\r\n  AND reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date\r\nGROUP BY reading_date\r\nORDER BY reading_date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "id": 9,
+          "title": "Daily Avg. Temperature (°C)",
+          "description": "Shows the daily average air temperature in London from 2022 to 2025, based on Open-Meteo historical weather data.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  reading_date AS time,\r\n  avg_temperature_2m\r\nFROM daily_weather_metrics\r\nWHERE reading_date BETWEEN $__timeFrom()::date AND $__timeTo()::date\r\nORDER BY reading_date;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "single",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 80,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 0,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 1,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": {
+        "items": [
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 0,
+              "width": 5,
+              "height": 4,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-3"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 5,
+              "y": 0,
+              "width": 5,
+              "height": 4,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-4"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 10,
+              "y": 0,
+              "width": 7,
+              "height": 4,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-5"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 17,
+              "y": 0,
+              "width": 7,
+              "height": 4,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-7"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 4,
+              "width": 10,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-8"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 10,
+              "y": 4,
+              "width": 14,
+              "height": 8,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-9"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 4,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-10"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [],
+    "timeSettings": {
+      "timezone": "browser",
+      "from": "2022-01-22T00:00:00.000Z",
+      "to": "2025-12-31T23:59:59.000Z",
+      "autoRefresh": "",
+      "autoRefreshIntervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "hideTimepicker": false,
+      "fiscalYearStartMonth": 0
+    },
+    "title": "London Environmental Time-Series Dashboard",
+    "variables": [],
+    "preferences": {
+      "layout": {
+        "kind": "GridLayout",
+        "spec": {
+          "items": []
+        }
+      }
+    }
+  }
+}
+```
+
+</details>
+
 > Note: the Grafana datasource and imported dashboard currently live in the persisted `grafana_data` Docker volume, **not** in repo-managed provisioning files. See [Work To Be Done](#work-to-be-done).
 
 ---
@@ -258,9 +1231,11 @@ Outputs: `s3_bucket_name`, `s3_bucket_arn`, `ec2_public_ip`, `airflow_url`, `gra
 **Important:** Terraform currently provisions *a host with Docker + Astro installed and nothing deployed*. The app is not yet brought up automatically — see the roadmap.
 
 ### Why Elastic IP
+
 A stable public IP that survives stop/start, so SSH/CD targets, Airflow and Grafana URLs don't break.
 
 ### Why an EC2 IAM role
+
 `boto3` uses the instance role automatically on EC2, so **AWS keys are not needed in the prod `.env`** (unlike local). The role only needs read access to the raw bucket.
 
 ---
@@ -344,6 +1319,7 @@ terraform/*.tfstate  terraform/.terraform/
 ## Work To Be Done
 
 ### Deployment to EC2 (the headline gap)
+
 The Terraform host has Docker + Astro installed but nothing is deployed. To make "deploy to prod EC2 via Docker" real:
 
 1. **Standalone `docker-compose.prod.yml`** — a self-contained stack (Airflow webserver/scheduler/triggerer + metadata Postgres + TimescaleDB + Grafana) that does **not** depend on the `astro dev` dev-only command. `docker-compose.override.yml` is only an *override* of Astro's generated base and can't stand alone on a clean box.
@@ -352,17 +1328,20 @@ The Terraform host has Docker + Astro installed but nothing is deployed. To make
 4. **SSM-based deploy** — attach `AmazonSSMManagedInstanceCore` to the EC2 role and deploy via SSM Send-Command (auditable, lets you close port 22). The current role only grants S3 read.
 
 ### Infrastructure hardening
+
 - **Remote Terraform state** — add an S3 backend + DynamoDB lock (currently local `terraform.tfstate`).
 - **Persistent data volume** — move TimescaleDB + Grafana Docker volumes onto a dedicated EBS volume (or managed DB) with snapshots, so an instance replacement doesn't wipe the data.
 - **Right-size the instance** — `t3.small` (2 GB) OOM-kills this stack; use `t3.medium`+ or split TimescaleDB to RDS / Timescale Cloud.
 - **Secrets management** — store `POSTGRES_*` / `GF_*` in AWS SSM Parameter Store (SecureString) and render `.env` on the box at deploy.
 
 ### Reliability & observability
+
 - **Failure alerting** — `email_on_failure` is `False`; wire Airflow callbacks to email/Slack and add CloudWatch alarms.
 - **Grafana provisioning** — commit datasource + dashboard provisioning so Grafana is reproducible instead of relying on the `grafana_data` volume.
 - **More tests** — cover the `24:00` timestamp handling, the silver pivot, and the gold join; add `terraform fmt/validate` to CI.
 
 ### Data & modelling
+
 - **Persist bronze/silver/gold to S3** as a durable data lake (not just local runtime files).
 - **Optional: SQL as source of truth** — have `create_timescale_tables.py` execute `sql/timescale/*.sql` instead of hardcoding DDL in Python, removing schema duplication.
 - **Data-freshness panel** in Grafana (`MAX(reading_date)` per table) to validate each load at a glance.
