@@ -7,10 +7,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_PREFIX = os.getenv("S3_PREFIX", "raw/defra/london_bloomsbury")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET")
 AWS_REGION = os.getenv("AWS_REGION", "eu-north-1")
-LOCAL_RAW_BASE = Path("data/raw")
+
+# Root prefix under which raw data lives in S3 (e.g. "raw"), and the
+# per-source subfolder (e.g. "defra/london_bloomsbury"). The full prefix
+# we list/download from is the two joined together.
+S3_RAW_PREFIX = os.getenv("S3_RAW_PREFIX", "raw").rstrip("/")
+DEFRA_SITE_FOLDER = os.getenv("DEFRA_SITE_FOLDER", "defra/london_bloomsbury").strip("/")
+S3_PREFIX = f"{S3_RAW_PREFIX}/{DEFRA_SITE_FOLDER}"
+
+LOCAL_RAW_BASE = Path(os.getenv("LOCAL_RAW_DIR", "data/raw"))
 
 
 def list_s3_csv_objects(bucket_name: str, prefix: str) -> list[dict]:
@@ -37,6 +44,19 @@ def local_path_for_s3_key(key: str, prefix_root: str) -> Path:
     return LOCAL_RAW_BASE / relative_key
 
 
+def is_already_downloaded(local_path: Path, remote_obj: dict) -> bool:
+    """Skip re-downloading a file that is already present and unchanged.
+
+    Frozen historical CSVs never change size, so they are skipped after the
+    first sync. The current year's file grows as readings are added, so its
+    size no longer matches and it is re-downloaded.
+    """
+    if not local_path.exists():
+        return False
+
+    return local_path.stat().st_size == remote_obj["Size"]
+
+
 def download_s3_object(bucket_name: str, key: str, local_path: Path) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +71,7 @@ def download_s3_object(bucket_name: str, key: str, local_path: Path) -> None:
 
 def main() -> None:
     if not S3_BUCKET_NAME:
-        raise ValueError("S3_BUCKET_NAME must be set in the environment or .env file.")
+        raise ValueError("S3_BUCKET must be set in the environment or .env file.")
 
     print(f"Syncing raw DEFRA CSVs from S3 bucket '{S3_BUCKET_NAME}' with prefix '{S3_PREFIX}'")
 
@@ -63,7 +83,12 @@ def main() -> None:
 
     for obj in objects:
         key = obj["Key"]
-        local_path = local_path_for_s3_key(key, "raw")
+        local_path = local_path_for_s3_key(key, S3_RAW_PREFIX)
+
+        if is_already_downloaded(local_path, obj):
+            print(f"Skipping unchanged s3://{S3_BUCKET_NAME}/{key}")
+            continue
+
         download_s3_object(S3_BUCKET_NAME, key, local_path)
 
     print("Raw DEFRA CSV sync completed successfully.")

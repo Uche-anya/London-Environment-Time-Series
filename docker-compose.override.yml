@@ -5,11 +5,11 @@ services:
     networks:
       - envnet
     volumes:
-      - ./pipelines:/opt/airflow/pipelines
-      - ./data_quality:/opt/airflow/data_quality
-      - ./data:/opt/airflow/data
-      - ./sql:/opt/airflow/sql
-      - ./src:/opt/airflow/src
+      - ./pipelines:/usr/local/airflow/pipelines
+      - ./data_quality:/usr/local/airflow/data_quality
+      - ./data:/usr/local/airflow/data
+      - ./sql:/usr/local/airflow/sql
+      - ./src:/usr/local/airflow/src
 
   scheduler:
     env_file:
@@ -17,11 +17,11 @@ services:
     networks:
       - envnet
     volumes:
-      - ./pipelines:/opt/airflow/pipelines
-      - ./data_quality:/opt/airflow/data_quality
-      - ./data:/opt/airflow/data
-      - ./sql:/opt/airflow/sql
-      - ./src:/opt/airflow/src
+      - ./pipelines:/usr/local/airflow/pipelines
+      - ./data_quality:/usr/local/airflow/data_quality
+      - ./data:/usr/local/airflow/data
+      - ./sql:/usr/local/airflow/sql
+      - ./src:/usr/local/airflow/src
 
   triggerer:
     env_file:
@@ -29,11 +29,11 @@ services:
     networks:
       - envnet
     volumes:
-      - ./pipelines:/opt/airflow/pipelines
-      - ./data_quality:/opt/airflow/data_quality
-      - ./data:/opt/airflow/data
-      - ./sql:/opt/airflow/sql
-      - ./src:/opt/airflow/src
+      - ./pipelines:/usr/local/airflow/pipelines
+      - ./data_quality:/usr/local/airflow/data_quality
+      - ./data:/usr/local/airflow/data
+      - ./sql:/usr/local/airflow/sql
+      - ./src:/usr/local/airflow/src
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16

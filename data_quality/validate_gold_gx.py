@@ -3,8 +3,6 @@ from pathlib import Path
 import duckdb
 import great_expectations as gx
 
-context = gx.get_context()
-
 
 GOLD_AIR_QUALITY_PATH = (
     "data/gold/daily_air_quality/daily_air_quality_metrics.parquet"
@@ -16,6 +14,10 @@ GOLD_WEATHER_PATH = (
 
 GOLD_ENVIRONMENT_PATH = (
     "data/gold/hourly_environment_metrics/hourly_environment_metrics.parquet"
+)
+
+SILVER_AIR_QUALITY_PATH = (
+    "data/silver/air_quality/year=*/silver_air_quality_*.parquet"
 )
 
 
@@ -41,7 +43,18 @@ def validate_daily_air_quality() -> bool:
         ],
     )
 
-    validator.expect_table_row_count_to_be_between(min_value=10000, max_value=11000)
+    # Expected rows scale with the data: one row per (date, site, pollutant).
+    # Derived from the data itself so the check holds as new years are added,
+    # while still catching missing days or duplicate-row explosions.
+    expected_rows = (
+        df["reading_date"].nunique()
+        * df["site_name"].nunique()
+        * df["pollutant"].nunique()
+    )
+    validator.expect_table_row_count_to_be_between(
+        min_value=int(expected_rows * 0.95),
+        max_value=expected_rows,
+    )
 
     validator.expect_column_values_to_not_be_null("reading_date")
     validator.expect_column_values_to_not_be_null("site_name")
@@ -97,7 +110,12 @@ def validate_daily_weather() -> bool:
         ],
     )
 
-    validator.expect_table_row_count_to_be_between(min_value=1400, max_value=1500)
+    # Expected rows scale with the data: one row per (date, city).
+    expected_rows = df["reading_date"].nunique() * df["city"].nunique()
+    validator.expect_table_row_count_to_be_between(
+        min_value=int(expected_rows * 0.95),
+        max_value=expected_rows,
+    )
 
     validator.expect_column_values_to_not_be_null("reading_date")
     validator.expect_column_values_to_not_be_null("city")
@@ -136,6 +154,16 @@ def validate_hourly_environment_metrics() -> bool:
         """
     ).fetchdf()
 
+    # The hourly table is silver air quality enriched with weather via a 1:1
+    # join on recorded_at, so its row count should match the silver source.
+    expected_rows = con.execute(
+        f"""
+        SELECT COUNT(*)
+        FROM read_parquet('{SILVER_AIR_QUALITY_PATH}')
+        WHERE recorded_at IS NOT NULL;
+        """
+    ).fetchone()[0]
+
     con.close()
 
     validator = gx.validator.validator.Validator(
@@ -149,8 +177,8 @@ def validate_hourly_environment_metrics() -> bool:
 
     validator.expect_column_values_to_be_between(
         "total_rows",
-        min_value=240000,
-        max_value=250000,
+        min_value=int(expected_rows * 0.99),
+        max_value=expected_rows,
     )
 
     validator.expect_column_values_to_be_between(
@@ -166,6 +194,12 @@ def validate_hourly_environment_metrics() -> bool:
 
 
 def main() -> None:
+    # Establish GX's active data context before any Validator runs. The
+    # Validator's rendered-content machinery requires it even though we don't
+    # reference the returned object directly; without this call expectations
+    # raise DataContextRequiredError.
+    gx.get_context()
+
     required_files = [
         GOLD_AIR_QUALITY_PATH,
         GOLD_WEATHER_PATH,
