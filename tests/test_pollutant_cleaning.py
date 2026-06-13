@@ -1,4 +1,7 @@
 import duckdb
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def clean_pollutant_value(raw_value: str):
