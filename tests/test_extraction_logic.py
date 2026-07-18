@@ -15,14 +15,12 @@ def test_parse_years_spans_start_to_current_year():
 
     assert years[0] == extract_weather.START_YEAR
     assert years[-1] == current_year
-    # Contiguous, no gaps, no hardcoded ceiling.
     assert years == list(range(extract_weather.START_YEAR, current_year + 1))
 
 
 # --- frozen-tail extraction decision ----------------------------------------
 
 def test_current_and_previous_year_are_always_refetched():
-    # The "moving head" is always re-fetched regardless of any existing file.
     assert extract_weather.needs_extraction(2030, 2030) is True
     assert extract_weather.needs_extraction(2029, 2030) is True
 
@@ -40,7 +38,6 @@ def test_frozen_year_is_fetched_only_when_missing(tmp_path, monkeypatch):
     assert extract_weather.needs_extraction(2000, 2030) is False
 
 
-# --- incremental S3 sync (skip unchanged) -----------------------------------
 
 def test_missing_local_file_is_downloaded(tmp_path):
     local_path = tmp_path / "london_bloomsbury_2025.csv"
@@ -49,7 +46,7 @@ def test_missing_local_file_is_downloaded(tmp_path):
 
 def test_matching_size_is_skipped(tmp_path):
     local_path = tmp_path / "london_bloomsbury_2025.csv"
-    local_path.write_bytes(b"0123456789")  # 10 bytes
+    local_path.write_bytes(b"0123456789")
     assert extract_raw_s3.is_already_downloaded(local_path, {"Size": 10}) is True
 
 
