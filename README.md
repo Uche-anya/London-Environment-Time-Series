@@ -1,388 +1,226 @@
 # London Environmental Time-Series Pipeline
 
-A production-style batch data engineering pipeline for analysing London Bloomsbury air-quality and weather data from **2022 to the present**.
+A batch data engineering pipeline that pulls London air-quality and weather data from 2022 to the present, cleans it, validates it, and serves it to a Grafana dashboard running on AWS.
 
-This project uses AWS S3, Apache Airflow (Astro), DuckDB, Parquet, GX Core, TimescaleDB, Grafana, Terraform and GitHub Actions to build a realistic batch data engineering workflow. Raw environmental data is ingested, transformed through medallion layers, validated, loaded into a serving database and visualised in Grafana.
+Built with S3, DuckDB, Parquet, Great Expectations, TimescaleDB, Grafana, Terraform, Docker and GitHub Actions. It's deployed and running on an EC2 instance inside the AWS free tier, at zero cost.
 
-The pipeline was first built and tested locally with Astro Airflow and Docker, then extended with Terraform-managed AWS infrastructure and GitHub Actions CI. It currently runs end-to-end and serves a full **2022 → present** history into TimescaleDB and Grafana.
+![London Environmental Time-Series Dashboard](grafana/dashboard/dashboard.png)
 
 ---
 
-## Project Status
+## Status
 
-**Working today (verified end-to-end locally):**
+Deployed and working end to end. A full run takes about **37 seconds** on the deployed instance and lands:
 
-- DEFRA air-quality CSV files stored in AWS S3, synced into the runtime by Airflow
-- Open-Meteo historical weather extraction
-- Bronze, silver and gold medallion layers using DuckDB and Parquet
-- Cleaning logic for missing, invalid and negative pollutant readings
-- **Incremental, idempotent extraction** — a dynamic year range and a "frozen-tail" strategy so closed years aren't re-fetched
-- GX Core validation with **data-driven (non-hardcoded) row-count expectations**
-- TimescaleDB tables for dashboard-ready metrics, loaded with safe upserts
-- Grafana dashboard for air-quality, weather and completeness metrics
-- Terraform infrastructure for S3, EC2, IAM, security group and Elastic IP
-- GitHub Actions CI (dependency install, Python compile, pytest)
-- A successful full DAG run loading 2022 → 2026 into the serving layer
-
-**Most recent serving-layer state:**
-
-| Table | Rows | Date range |
+| Table | Rows | What one row is |
 | --- | --- | --- |
-| `daily_air_quality_metrics` | ~11,400 | 2022-01-01 → present |
-| `daily_weather_metrics` | ~1,600 | 2022-01-01 → present |
-| `hourly_environment_metrics` | ~272,000 | 2022-01-01 → present |
+| `daily_air_quality_metrics` | 11,361 | one day, one pollutant |
+| `daily_weather_metrics` | 1,661 | one day |
+| `hourly_environment_metrics` | 272,496 | one hour of air quality joined to weather |
 
-**Next major step:** deploy the Dockerised stack to the Terraform-provisioned EC2 instance and add GitHub Actions CD from `main`. See [Work To Be Done](#work-to-be-done).
+All 272,496 hourly rows matched a weather reading, with none unmatched.
 
----
+The image is built by GitHub Actions and pushed to ECR; the EC2 box pulls and runs it. No AWS access keys exist anywhere in that chain, and nothing gets built on a laptop.
 
-## Architecture
-
-```text
-DEFRA CSV files                         Open-Meteo Historical API
-        ↓                                         ↓
-AWS S3 raw bucket                       Airflow extracts weather (JSON)
-        ↓                                         ↓
-Airflow syncs raw files (extract_raw_s3)   Raw weather JSON
-        ↓                                         ↓
-Raw layer (CSV)                          Bronze weather Parquet
-        ↓                                         ↓
-Bronze air-quality Parquet               Silver weather Parquet
-        ↓                                         ↓
-Silver air-quality Parquet  ─────────────────────┤
-        ↓                                         │
-        └──────────────┬──────────────────────────┘
-                       ↓
-              Gold metrics (daily AQ, daily weather, hourly joined)
-                       ↓
-              GX Core validation (quality gate)
-                       ↓
-                  TimescaleDB
-                       ↓
-                    Grafana
-```
+For deploy steps, see [DEPLOY.md](DEPLOY.md).
 
 ---
 
-## Tech Stack
+## Data sources
 
-| Area | Tool |
-| --- | --- |
-| Orchestration | Apache Airflow via Astro CLI |
-| Raw Storage | AWS S3 |
-| Transformation | DuckDB |
-| File Format | Parquet |
-| Data Quality | GX Core |
-| Serving Layer | TimescaleDB / PostgreSQL |
-| Dashboarding | Grafana |
-| Infrastructure | Terraform |
-| Containerisation | Docker / Astro |
-| CI | GitHub Actions |
-| Testing | pytest |
-
----
-
-## Data Sources
-
-### DEFRA UK-AIR
-
-Air-quality data comes from DEFRA UK-AIR monitoring files for the **London Bloomsbury** station ("All Hourly Pollutant Data, Column Format").
-
-Pollutants processed (hourly):
-
-- NO, NO₂, NOx, O₃, PM10, PM2.5, SO₂
-
-**Year coverage is dynamic** — the pipeline ingests from the configured start year (`START_DATE`, currently 2022) through the **current calendar year**, so new years flow in automatically without code changes.
-
-Raw DEFRA files are stored in S3:
+**DEFRA UK-AIR** supplies hourly air quality for the London Bloomsbury monitoring station, covering NO, NO₂, NOx, O₃, PM10, PM2.5 and SO₂. Those CSVs live in S3:
 
 ```text
 s3://<bucket>/raw/defra/london_bloomsbury/year=2022/london_bloomsbury_2022.csv
-s3://<bucket>/raw/defra/london_bloomsbury/year=2023/london_bloomsbury_2023.csv
 ...
 s3://<bucket>/raw/defra/london_bloomsbury/year=2026/london_bloomsbury_2026.csv
 ```
 
-Airflow downloads them into a mirrored local structure under `data/raw/defra/london_bloomsbury/year=*/`.
+**Open-Meteo** supplies historical hourly weather for the same coordinates: temperature, relative humidity, precipitation, mean sea-level pressure and wind speed. Its ERA5 archive publishes on roughly a five-day lag, so the current year is only ever requested up to today's date.
 
-### Open-Meteo Historical Weather API
+The year range isn't hardcoded. It derives from `START_DATE` and runs to the current calendar year, so 2027 flows in on its own.
 
-Open-Meteo provides historical hourly weather for London:
+---
 
-- Temperature, relative humidity, precipitation, mean sea-level pressure, wind speed
-
-Saved year by year:
+## How the data moves
 
 ```text
-data/raw/open_meteo/year=2022/london_weather_2022.json
-...
-data/raw/open_meteo/year=2026/london_weather_2026.json
+raw  →  bronze  →  silver  →  gold  →  quality gate  →  TimescaleDB  →  Grafana
 ```
 
-The Open-Meteo archive (ERA5) is published with a **~5-day lag**, so the current year is fetched only up to today's date.
+**Bronze** converts raw files to Parquet, keeps the original shape, and adds lineage columns (`site_name`, `source_year`, `source_file`). Weather JSON gets flattened to hourly rows here.
+
+**Silver** does the cleaning:
+
+- blank readings become `NULL`
+- values that won't parse as numbers become `NULL`
+- negative pollutant readings become `NULL`, since negative NO₂ isn't a thing
+- a genuine zero stays `0`
+
+DEFRA writes midnight as `24:00` belonging to the previous day, so silver rolls it forward to `00:00` of the next. Air quality also gets pivoted out of DEFRA's wide format into a long one: `recorded_at | site_name | pollutant | value | unit | year | source_file`.
+
+Missing readings never become zero. A gap is honest; a fabricated zero is pollution data that never happened.
+
+**Gold** produces what the dashboard queries: two daily summary tables and the hourly table joining air quality to weather.
 
 ---
 
-## Medallion Architecture
+## Quality gate
+
+Great Expectations validates gold before anything reaches the database. It checks that required columns exist and key fields aren't null, that pollutant names fall in the expected set, that completeness percentages sit between 0 and 100, that valid reading counts never exceed expected counts, and that weather coverage holds on the hourly table.
+
+Row-count expectations derive from the data's own date span rather than fixed numbers, so a new year doesn't break the suite while it still catches missing days or duplicate-row explosions. A failed check stops the run, and nothing loads.
+
+---
+
+## Two ways it runs
+
+**Locally, on Airflow.** `astro dev start` brings up Airflow with the DAG `london_environment_timeseries_pipeline`: ten tasks, with the air-quality and weather branches running independently before converging on the gold build, then validation, table creation and load. Scheduled Monday 06:00, `catchup=False`, one active run at a time.
 
 ```text
-Raw → Bronze → Silver → Gold
+extract_raw_s3  → bronze_air_quality → silver_air_quality ┐
+                                                          ├→ gold → validate → create_tables → load
+extract_weather → bronze_weather    → silver_weather     ┘
 ```
 
-### Raw
+**In production, without Airflow.** `run_pipeline.py` walks those same ten stages in one process and exits non-zero if any of them throws.
 
-Source data kept close to original format (DEFRA CSV from S3, Open-Meteo JSON from the API).
+Both call identical functions. The DAG imports `pipelines.create_gold.main`; so does the runner. There's no second copy of the logic to fall out of sync.
 
-### Bronze (`data/bronze/`)
+### Why production drops Airflow
 
-Raw files converted to Parquet, keeping most of the original structure and adding lineage columns (`site_name`, `source_year`, `source_file`). Weather JSON is flattened into hourly rows.
+Memory, and the cost that follows. The AWS free tier gives a `t3.micro` with 1 GB of RAM, and Airflow's scheduler alone wants roughly that before you add a webserver, its metadata Postgres, TimescaleDB and Grafana. Running it comfortably needs about 4 GB, which means a `t3.medium` at around $30 a month.
 
-### Silver (`data/silver/`)
+I built the full standalone Airflow stack first and got it healthy, so this is a measured decision rather than an assumption. For a weekly batch over a few hundred megabytes, a scheduler running 24/7 is simply the wrong tool. Airflow stays in the repo for local work; the deployed path is lean.
 
-Cleaned, standardised and reshaped. Air quality is pivoted from wide DEFRA format into a long analytical shape:
+---
+
+## Deployment architecture
 
 ```text
-recorded_at | site_name | pollutant | value | unit | year | source_file
+GitHub Actions ──(OIDC, no keys)──► ECR ──(instance role)──► EC2 t3.micro
+   builds image                   stores image              pulls + runs
+                                                                 │
+                                                    TimescaleDB + Grafana
 ```
 
-Cleaning rules:
+**GitHub Actions** builds `Dockerfile.pipeline` and pushes to ECR, authenticating through OIDC by assuming an IAM role whose trust policy is pinned to this repository. Images are tagged `latest` and the git SHA, so any running container traces back to a commit.
 
-- Blank readings → `NULL`
-- Invalid numeric values → `NULL`
-- Negative readings → `NULL`
-- Valid zero readings → kept as `0`
+**EC2** pulls that image using its instance profile, which grants S3 read and ECR pull. The `.env` on the server leaves the AWS key variables blank because boto3 picks the role up from instance metadata.
 
-Missing readings are deliberately **not** replaced with zero (that would invent pollution data). The special DEFRA `24:00` timestamp is rolled to `00:00` of the next day.
+Building in CI rather than on the box matters: a 1 GB instance compiling a Python image with pandas, pyarrow and Great Expectations is slow and fragile. The production image starts from `python:3.11-slim` and copies only what runs, coming in around 1 GB against the 3.5 GB Airflow-based dev image.
 
-### Gold (`data/gold/`)
+On the box, `docker-compose.prod.yml` keeps TimescaleDB and Grafana up, and runs the pipeline as a one-shot container behind a compose profile so `up` never starts it.
 
-Analytics-ready datasets:
-
-```text
-daily_air_quality_metrics.parquet
-daily_weather_metrics.parquet
-hourly_environment_metrics.parquet     (air quality enriched with weather)
-```
-
-These are validated with GX Core before loading into TimescaleDB.
+Grafana provisions its datasource and dashboard from files at startup, so a replaced instance comes back with the dashboard already wired rather than needing a manual import.
 
 ---
 
-## Incremental & Idempotent Design
+## Incremental and idempotent design
 
-The data has a specific shape: a large **frozen tail** (closed years that never change) and a small **moving head** (the current year, plus late-arriving / ratified data). The pipeline is built around that:
+The data has a large frozen tail and a small moving head, and the pipeline is built around that shape.
 
-- **Dynamic year range** — extraction derives `START_YEAR … current_year` instead of a hardcoded list, so it never silently falls behind the calendar.
-- **Frozen-tail weather extraction** — only the current and previous year are re-fetched each run; older years are fetched only if their output is missing (first-time backfill). This avoids hammering the free Open-Meteo API for data that can't change.
-- **Incremental S3 sync** — DEFRA CSVs are skipped if a local copy already exists with a matching size. The growing current-year file changes size and re-downloads naturally.
-- **Full-refresh transforms** — bronze → gold are rebuilt each run. At this data volume that is cheap and eliminates a whole class of incremental-merge bugs.
-- **Idempotent load** — gold is upserted into TimescaleDB with `ON CONFLICT … DO UPDATE`, so re-running never duplicates rows:
+**Weather** re-fetches the current and previous year on every run, since the current year is still filling in and the previous one can still be revised. Older years are only fetched when their output file is missing.
 
-  ```text
-  New row       → inserted
-  Existing row  → updated
-  Duplicate row → not created
-  ```
+**DEFRA CSVs** are skipped when the local copy matches the S3 object's size. The growing current-year file changes size and re-downloads on its own. Note that this syncs from S3, not from DEFRA directly, so refreshed source files need uploading to the bucket first.
 
-The whole DAG is therefore safe to re-run at any time.
+**Transforms** rebuild bronze through gold from scratch each run. At this volume that costs seconds and eliminates a whole class of incremental-merge bugs.
+
+**Loads** use `ON CONFLICT ... DO UPDATE`. New rows insert, existing rows update, duplicates never appear. The whole run is safe to repeat at any time.
 
 ---
 
-## Airflow DAG
+## Tech stack
 
-DAG id: `london_environment_timeseries_pipeline`
-
-```text
-extract_raw_s3 → create_bronze_air_quality → create_silver_air_quality ┐
-                                                                        ├→ create_gold
-extract_weather → create_bronze_weather → create_silver_weather ───────┘
-        → validate_gold_with_gx → create_timescale_tables → load_gold_to_timescale
-```
-
-Schedule:
-
-```python
-schedule="0 6 * * 1"   # every Monday 06:00
-catchup=False          # missed historical runs are not auto-backfilled
-max_active_runs=1      # one run at a time
-```
-
-**Import-safety note:** task modules pull in heavy dependencies (DuckDB, Great Expectations, boto3). To keep DAG parsing fast and avoid the Airflow DagBag import timeout, the DAG imports task callables **lazily at execution time** (via `importlib` inside `run_pipeline`), not at the top of the file. Keep new top-level code in the DAG file minimal.
+| Area | Tool |
+| --- | --- |
+| Local orchestration | Apache Airflow (Astro CLI) |
+| Production execution | `run_pipeline.py` in a container |
+| Raw storage | AWS S3 |
+| Transformation | DuckDB |
+| File format | Parquet |
+| Data quality | Great Expectations |
+| Serving layer | TimescaleDB |
+| Dashboards | Grafana |
+| Image registry | AWS ECR |
+| Infrastructure | Terraform |
+| CI/CD | GitHub Actions (OIDC) |
+| Testing | pytest |
 
 ---
 
-## Data Quality (GX Core)
+## Infrastructure
 
-GX Core validates the gold layer before it reaches the serving database. Checks include:
+Terraform provisions the S3 raw bucket (versioned, AES256, public access blocked), the ECR repository with a lifecycle rule expiring untagged images after seven days, the EC2 instance with an Elastic IP, and a security group restricting access to a single allowed IP.
 
-- Required columns present and key fields not null
-- Pollutant values within the expected category set
-- Completeness percentages between 0 and 100
-- Valid reading counts never exceed expected reading counts
-- Weather-join coverage on the hourly environment table
+On the IAM side it creates the instance role with S3 read and ECR pull, the GitHub OIDC provider, and a CI role scoped to one repository and one ECR repo.
 
-Row-count expectations are **derived from the data's own date span** (e.g. one row per date × site × pollutant) rather than hardcoded numbers, so they remain valid as new years are added while still catching missing days or duplicate-row explosions.
+The instance's `user_data` installs Docker, the AWS CLI and a 2 GB swapfile. Swap earns its place: the run spikes memory during the gold build and the 272k-row load, and 1 GB alone is tight.
+
+Outputs include `ec2_public_ip`, `ecr_repository_url`, `github_actions_role_arn`, `grafana_url` and the bucket name.
 
 ---
 
-## TimescaleDB Serving Layer
-
-TimescaleDB serves Grafana. Tables:
-
-```text
-daily_air_quality_metrics
-daily_weather_metrics
-hourly_environment_metrics   (TimescaleDB hypertable on recorded_at)
-```
-
-Tables and indexes are created by `pipelines/create_timescale_tables.py` (the runtime source of truth). `sql/timescale/create_table.sql` and `indexes.sql` mirror that DDL as a human-readable reference only — they are not executed by the pipeline.
-
----
-
-## Grafana Dashboard
-
-Grafana connects to TimescaleDB and visualises the gold metrics: average / peak NO₂, average PM2.5, average wind speed, daily pollution trend, daily average temperature, highest pollution day, and completeness metrics. The exported dashboard JSON lives under `grafana/`.
-
-![London Environmental Time-Series Dashboard](grafana/dashboard/dashboard.png)
-
-_Grafana dashboard (2022-01-22 → 2026-06-11): pollutant averages/peaks, daily pollution trend, daily average temperature, and the highest key pollution day._
-
-> Note: the Grafana datasource and imported dashboard currently live in the persisted `grafana_data` Docker volume, **not** in repo-managed provisioning files. See [Work To Be Done](#work-to-be-done).
-
----
-
-## Terraform Infrastructure
-
-Terraform provisions the AWS layer (`terraform/`):
-
-- S3 bucket for raw data (versioned, AES256 encrypted, all public access blocked)
-- IAM role + policy + instance profile letting EC2 **read S3 with no static keys**
-- Security group (SSH 22, Airflow 8080, Grafana 3000 — restricted to `allowed_ip`)
-- Ubuntu 22.04 EC2 instance (default `t3.small`, gp3 root volume) whose `user_data` installs Docker + the Astro CLI
-- Elastic IP for a stable public address
-
-Outputs: `s3_bucket_name`, `s3_bucket_arn`, `ec2_public_ip`, `airflow_url`, `grafana_url`.
-
-**Important:** Terraform currently provisions *a host with Docker + Astro installed and nothing deployed*. The app is not yet brought up automatically — see the roadmap.
-
-### Why Elastic IP
-
-A stable public IP that survives stop/start, so SSH/CD targets, Airflow and Grafana URLs don't break.
-
-### Why an EC2 IAM role
-
-`boto3` uses the instance role automatically on EC2, so **AWS keys are not needed in the prod `.env`** (unlike local). The role only needs read access to the raw bucket.
-
----
-
-## CI with GitHub Actions
-
-`.github/workflows/ci.yml` runs on push to `dev`/`main` and PRs into `main`:
-
-1. Checkout
-2. Set up Python 3.11
-3. Install dependencies
-4. `compileall` of `dags pipelines src data_quality tests`
-5. `pytest`
-
-Current tests cover required-file existence and pollutant cleaning logic.
-
----
-
-## Branch Strategy
-
-```text
-dev  → active development / integration branch
-main → production branch (protected; deploy source)
-```
-
-```text
-work locally → push to dev → CI runs → PR dev→main → CI runs → merge main → (planned) CD deploys to EC2
-```
-
----
-
-## Running Locally
+## Running locally
 
 ```bash
-astro dev start            # start Airflow + TimescaleDB + Grafana
-# Airflow:  http://localhost:8080
-# Grafana:  http://localhost:3000
-# then trigger the DAG: london_environment_timeseries_pipeline
+astro dev start          # Airflow on :8080, TimescaleDB, Grafana on :3000
+# then trigger london_environment_timeseries_pipeline
 ```
 
-Useful commands:
+Or skip Airflow entirely and run the same stages directly:
+
+```bash
+python run_pipeline.py
+```
+
+Tests and checks:
 
 ```bash
 pytest
 python -m compileall dags pipelines src data_quality tests
-
 cd terraform && terraform fmt && terraform validate && terraform plan
-
-aws s3 ls s3://<bucket>/raw/defra/london_bloomsbury/ --recursive
-
-python pipelines/extract_weather.py        # run a single stage manually
-python pipelines/create_bronze_weather.py
 ```
+
+---
+
+## Deploying
+
+[DEPLOY.md](DEPLOY.md) has the full runbook. The short version: `terraform apply`, set two values in GitHub (a role ARN secret and an ECR URL variable), run the build workflow, then on the box log in to ECR, `up -d`, pull, and run the pipeline once.
 
 ---
 
 ## Configuration
 
-Copy `.env.example` to `.env` and fill in real values (`.env` is gitignored and must never be committed):
+Copy `.env.example` to `.env` and fill it in. `.env` is gitignored and must never be committed.
 
-```bash
-cp .env.example .env
-```
+Groups: AWS/S3 (`AWS_REGION`, `S3_BUCKET`, `S3_RAW_PREFIX`, `DEFRA_SITE_FOLDER`), location and weather (`LATITUDE`, `LONGITUDE`, `START_DATE`, `TIMEZONE`), TimescaleDB (`POSTGRES_*`), Grafana (`GF_SECURITY_*`), and optionally `PIPELINE_IMAGE` to pull the built image from ECR instead of building locally.
 
-Key groups: AWS/S3 (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_RAW_PREFIX`, `DEFRA_SITE_FOLDER`), location/weather (`LATITUDE`, `LONGITUDE`, `START_DATE`, `TIMEZONE`), TimescaleDB (`POSTGRES_*`), and Grafana (`GF_SECURITY_*`).
-
-On EC2 the AWS keys are unnecessary — the instance IAM role supplies S3 access. `boto3` requires the exact names `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (not `AWS_ACCESS_KEY` / `AWS_SECRET_KEY`).
-
-### Files not committed
-
-```text
-.env
-.venv/
-data/raw/  data/bronze/  data/silver/  data/gold/
-terraform/terraform.tfvars
-terraform/*.tfstate  terraform/.terraform/
-```
+On EC2 the AWS key variables stay empty because the instance role supplies access. Locally they're required, since a laptop has no role to inherit. boto3 needs the exact names `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
 
 ---
 
-## Work To Be Done
+## CI
 
-### Deployment to EC2 (the headline gap)
+`.github/workflows/ci.yml` runs on pushes to `dev` and `main` and on PRs into `main`: install dependencies, `compileall` across `dags pipelines src data_quality tests`, then pytest. Current coverage is 17 tests over required-file existence, pollutant cleaning, the dynamic year range and frozen-tail extraction logic, and the silver transforms.
 
-The Terraform host has Docker + Astro installed but nothing is deployed. To make "deploy to prod EC2 via Docker" real:
-
-1. **Standalone `docker-compose.prod.yml`** — a self-contained stack (Airflow webserver/scheduler/triggerer + metadata Postgres + TimescaleDB + Grafana) that does **not** depend on the `astro dev` dev-only command. `docker-compose.override.yml` is only an *override* of Astro's generated base and can't stand alone on a clean box.
-2. **ECR repository** (Terraform) — build the image once in CI, push by git SHA, and have EC2 `docker compose pull` it. Avoid building on the prod host.
-3. **GitHub Actions CD** — on merge to `main`: OIDC → build → push ECR → deploy. No long-lived AWS keys in GitHub.
-4. **SSM-based deploy** — attach `AmazonSSMManagedInstanceCore` to the EC2 role and deploy via SSM Send-Command (auditable, lets you close port 22). The current role only grants S3 read.
-
-### Infrastructure hardening
-
-- **Remote Terraform state** — add an S3 backend + DynamoDB lock (currently local `terraform.tfstate`).
-- **Persistent data volume** — move TimescaleDB + Grafana Docker volumes onto a dedicated EBS volume (or managed DB) with snapshots, so an instance replacement doesn't wipe the data.
-- **Right-size the instance** — `t3.small` (2 GB) OOM-kills this stack; use `t3.medium`+ or split TimescaleDB to RDS / Timescale Cloud.
-- **Secrets management** — store `POSTGRES_*` / `GF_*` in AWS SSM Parameter Store (SecureString) and render `.env` on the box at deploy.
-
-### Reliability & observability
-
-- **Failure alerting** — `email_on_failure` is `False`; wire Airflow callbacks to email/Slack and add CloudWatch alarms.
-- **Grafana provisioning** — commit datasource + dashboard provisioning so Grafana is reproducible instead of relying on the `grafana_data` volume.
-- **More tests** — cover the `24:00` timestamp handling, the silver pivot, and the gold join; add `terraform fmt/validate` to CI.
-
-### Data & modelling
-
-- **Persist bronze/silver/gold to S3** as a durable data lake (not just local runtime files).
-- **Optional: SQL as source of truth** — have `create_timescale_tables.py` execute `sql/timescale/*.sql` instead of hardcoding DDL in Python, removing schema duplication.
-- **Data-freshness panel** in Grafana (`MAX(reading_date)` per table) to validate each load at a glance.
+`.github/workflows/build-and-push.yml` handles the image build and ECR push.
 
 ---
 
-## Project Summary
+## What's still missing
 
-A practical batch data engineering platform: raw environmental data stored in S3, orchestrated with Airflow, transformed with DuckDB, validated with GX Core, loaded into TimescaleDB, and visualised in Grafana — provisioned with Terraform and gated by GitHub Actions CI. It runs successfully end-to-end and serves a dynamic 2022 → present history. The remaining work is production deployment to EC2 (standalone compose + ECR + CD), infrastructure hardening (remote state, persistent storage, right-sizing, secrets), and observability.
+Terraform state is local rather than in an S3 backend with locking. Data volumes sit on the instance, so replacing the box loses the database until the pipeline reruns. There's no alerting; a failure shows up as a non-zero exit code and nowhere else. Bronze, silver and gold stay on the instance rather than persisting back to S3 as a durable lake. And the deployed pipeline runs on demand rather than on a schedule, which one crontab line would change.
+
+None of these stop it doing what it claims. They're the gap between something that works and something a team would depend on.
+
+---
+
+## Contact
+
+### Kingsley Anya
+
+- Email: [kingsley_anya@hotmail.com](mailto:kingsley_anya@hotmail.com)
+- LinkedIn: [linkedin.com/in/kingsley-u-anya-0b49a0167](https://www.linkedin.com/in/kingsley-u-anya-0b49a0167)
+
+If you're a recruiter hiring in data engineering, an engineering manager with a team I'd fit, or you've got an idea for a project worth building, I'd like to hear from you. Feedback on the code or the architecture choices is welcome too.
