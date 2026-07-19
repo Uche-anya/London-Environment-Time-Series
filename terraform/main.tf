@@ -191,8 +191,12 @@ resource "aws_instance" "app_server" {
               #!/bin/bash
               set -e
 
+              # git/curl/unzip/awscli are in Ubuntu's repos; Docker (engine + the
+              # compose plugin) is NOT — install it from Docker's official script,
+              # otherwise `docker-compose-plugin` fails to resolve via apt.
               apt-get update -y
-              apt-get install -y docker.io docker-compose-plugin git curl unzip awscli
+              apt-get install -y git curl unzip awscli
+              curl -fsSL https://get.docker.com | sh
 
               systemctl enable docker
               systemctl start docker
