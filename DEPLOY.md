@@ -78,11 +78,10 @@ hourly rows.
 
 Open `http://<EIP>:3000` (login = `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD`).
 
-1. **Add datasource** → PostgreSQL:
-   - Host: `timescaledb:5432`  (Grafana reaches it by service name on the compose network)
-   - Database / User / Password: your `POSTGRES_*` values
-   - TLS/SSL mode: `disable`
-2. **Import dashboard** → upload [`grafana/dashboard/london_environment_dashboard.json`](grafana/dashboard/london_environment_dashboard.json), pick the datasource above.
+**The datasource and dashboard are already there** — Grafana provisions them on
+startup from [`grafana/provisioning/`](grafana/provisioning/) +
+[`grafana/dashboards/`](grafana/dashboards/), no manual setup. Open
+*Dashboards → London Environmental Time-Series Dashboard* and screenshot.
 
 That's the portfolio artifact — a live dashboard on AWS backed by the real pipeline.
 

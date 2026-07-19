@@ -1,0 +1,23 @@
+apiVersion: 1
+
+# Provisioned PostgreSQL/TimescaleDB datasource.
+# The uid MUST stay "efmiwcfbgjrwgc" — the dashboard's panels reference the
+# datasource by that uid, so matching it makes the dashboard work with no edits.
+# Values come from environment (grafana loads .env via env_file in compose).
+datasources:
+  - name: TimescaleDB
+    uid: efmiwcfbgjrwgc
+    type: postgres
+    access: proxy
+    url: timescaledb:5432
+    user: $POSTGRES_USER
+    isDefault: true
+    editable: true
+    database: $POSTGRES_DB
+    jsonData:
+      database: $POSTGRES_DB
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: true
+    secureJsonData:
+      password: $POSTGRES_PASSWORD
