@@ -23,3 +23,13 @@ output "grafana_url" {
   description = "Grafana UI URL"
   value       = "http://${aws_eip.app_eip.public_ip}:3000"
 }
+
+output "ecr_repository_url" {
+  description = "ECR repo the pipeline image is pushed to / pulled from (set as PIPELINE_IMAGE base)"
+  value       = aws_ecr_repository.pipeline.repository_url
+}
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN GitHub Actions assumes via OIDC (set as the AWS_ROLE_ARN repo secret/variable)"
+  value       = aws_iam_role.github_actions.arn
+}

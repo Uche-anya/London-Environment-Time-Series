@@ -1,0 +1,55 @@
+name: Build and push pipeline image
+
+# Builds Dockerfile.pipeline and pushes it to ECR so the EC2 box can pull it.
+# Auth is via GitHub OIDC (no long-lived AWS keys in GitHub) — the role is
+# provisioned in terraform/ecr.tf.
+#
+# One-time setup (from `terraform output`):
+#   - repo secret   AWS_ROLE_ARN        = github_actions_role_arn
+#   - repo variable ECR_REPOSITORY_URL  = ecr_repository_url
+#   - repo variable AWS_REGION          = eu-north-1   (optional; defaults below)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipelines/**"
+      - "src/**"
+      - "data_quality/**"
+      - "sql/**"
+      - "run_pipeline.py"
+      - "requirements.txt"
+      - "Dockerfile.pipeline"
+      - ".github/workflows/build-and-push.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+
+jobs:
+  build-push:
+    name: Build and push to ECR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY_URL }}
+        run: |
+          docker build -f Dockerfile.pipeline \
+            -t "$IMAGE:${{ github.sha }}" \
+            -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"

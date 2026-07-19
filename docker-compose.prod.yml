@@ -50,10 +50,13 @@ services:
   # One-shot loader. Behind the "run" profile so `up` never starts it.
   # Run it with: docker compose -f docker-compose.prod.yml run --rm pipeline
   pipeline:
+    # On the box: set PIPELINE_IMAGE=<ecr_repository_url>:latest and
+    # `docker compose pull pipeline` — no build happens on the t3.micro.
+    # Left unset, it builds locally from Dockerfile.pipeline (dev convenience).
+    image: ${PIPELINE_IMAGE:-london-environment-pipeline:latest}
     build:
       context: .
       dockerfile: Dockerfile.pipeline
-    image: london-environment-pipeline:latest
     env_file:
       - .env
     volumes:

@@ -192,7 +192,7 @@ resource "aws_instance" "app_server" {
               set -e
 
               apt-get update -y
-              apt-get install -y docker.io docker-compose-plugin git curl unzip
+              apt-get install -y docker.io docker-compose-plugin git curl unzip awscli
 
               systemctl enable docker
               systemctl start docker

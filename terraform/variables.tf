@@ -36,3 +36,9 @@ variable "root_volume_size" {
   type        = number
   default     = 20
 }
+
+variable "github_repository" {
+  description = "GitHub repo (owner/name) allowed to assume the CI role via OIDC to push to ECR"
+  type        = string
+  default     = "Uche-anya/London-Environment-Time-Series"
+}
