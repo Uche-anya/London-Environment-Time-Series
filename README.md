@@ -83,7 +83,7 @@ extract_raw_s3  → bronze_air_quality → silver_air_quality ┐
 extract_weather → bronze_weather    → silver_weather     ┘
 ```
 
-**In production, without Airflow.** `run_pipeline.py` walks those same ten stages in one process and exits non-zero if any of them throws.
+**In production, without Airflow.** `run_pipeline.py` walks those same ten stages in one process and exits non-zero if any of them throws. On the deployed instance a cron entry runs it every Monday at 06:00 UTC, appending output to `~/pipeline.log`.
 
 Both call identical functions. The DAG imports `pipelines.create_gold.main`; so does the runner. There's no second copy of the logic to fall out of sync.
 
@@ -208,11 +208,15 @@ On EC2 the AWS key variables stay empty because the instance role supplies acces
 
 ---
 
-## What's still missing
+## Trade-offs and next steps
 
-Terraform state is local rather than in an S3 backend with locking. Data volumes sit on the instance, so replacing the box loses the database until the pipeline reruns. There's no alerting; a failure shows up as a non-zero exit code and nowhere else. Bronze, silver and gold stay on the instance rather than persisting back to S3 as a durable lake. And the deployed pipeline runs on demand rather than on a schedule, which one crontab line would change.
+Scope calls I made on purpose, and what I'd change if this carried real traffic:
 
-None of these stop it doing what it claims. They're the gap between something that works and something a team would depend on.
+- **Terraform state is local.** Fine for one operator; a team needs an S3 backend with DynamoDB locking so two applies can't race each other.
+- **Data volumes live on the instance.** Replacing the box means re-running the pipeline to repopulate. A dedicated EBS volume with snapshots, or a managed database, removes that.
+- **No alerting.** Failures surface as a non-zero exit code and nothing else. Wiring that to SNS or Slack, plus a freshness panel showing `MAX(reading_date)` per table, is the obvious next step.
+- **Bronze through gold stay on the instance** rather than persisting to S3 as a lake. At this volume rebuilding costs seconds; at ten times the size I'd write them back.
+- **Scheduling is cron, not an orchestrator.** Right for one weekly job; the moment there are several DAGs with real dependencies between them, that argument flips back toward managed Airflow.
 
 ---
 
