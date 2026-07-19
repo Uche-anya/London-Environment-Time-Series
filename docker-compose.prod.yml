@@ -1,0 +1,168 @@
+# Standalone production stack for the London Environment Time-Series pipeline.
+#
+# This is SELF-CONTAINED and does NOT depend on the Astro CLI (`astro dev start`)
+# or on docker-compose.override.yml (which is only an override of Astro's generated
+# base). It brings up the full stack on a clean Docker host:
+#
+#   airflow-metadata-db   Postgres for Airflow's own metadata (separate from the serving DB)
+#   airflow-init          one-shot: db migrate + create admin user, then exits
+#   scheduler             Airflow scheduler (LocalExecutor runs the tasks)
+#   webserver             Airflow UI on :8080
+#   triggerer             Airflow triggerer (deferrable operators)
+#   timescaledb           serving layer that Grafana reads (the pipeline's POSTGRES_HOST)
+#   grafana               dashboards on :3000
+#
+# Usage on the target host:
+#   cp .env.example .env   # fill in real values
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Forward-compatible with the ECR/CD roadmap: set AIRFLOW_IMAGE to a pushed image
+# (e.g. <acct>.dkr.ecr.<region>.amazonaws.com/london-environment:<sha>) and the
+# airflow services will use it instead of building locally.
+
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE:-london-environment-timeseries:prod}
+  build:
+    context: .
+    dockerfile: Dockerfile.prod
+  env_file:
+    - .env
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_METADATA_USER:-airflow}:${AIRFLOW_METADATA_PASSWORD:-airflow}@airflow-metadata-db:5432/${AIRFLOW_METADATA_DB:-airflow}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+    # Shared across webserver + scheduler so sessions/serialization line up.
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change-me-in-prod}
+    # Empty -> Airflow uses an ephemeral key. The pipeline stores no encrypted
+    # Airflow Connections (it reads .env directly), so this is safe to leave unset;
+    # set it if you later add encrypted Connections/Variables.
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+  volumes:
+    - airflow_data:/usr/local/airflow/data
+    - airflow_logs:/usr/local/airflow/logs
+  depends_on: &airflow-common-depends
+    airflow-metadata-db:
+      condition: service_healthy
+  networks:
+    - envnet
+  restart: always
+
+services:
+  # --- Airflow metadata database (separate from the TimescaleDB serving layer) ---
+  airflow-metadata-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${AIRFLOW_METADATA_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_METADATA_PASSWORD:-airflow}
+      POSTGRES_DB: ${AIRFLOW_METADATA_DB:-airflow}
+    volumes:
+      - airflow_metadata_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_METADATA_USER:-airflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - envnet
+    restart: always
+
+  # --- One-shot init: migrate the metadata DB and create the admin user ---
+  airflow-init:
+    <<: *airflow-common
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
+          --firstname Admin --lastname User --role Admin \
+          --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" || true
+    restart: on-failure
+
+  scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  webserver:
+    <<: *airflow-common
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  triggerer:
+    <<: *airflow-common
+    command: airflow triggerer
+    depends_on:
+      airflow-metadata-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # --- Serving layer: what the pipeline loads into and Grafana reads ---
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    env_file:
+      - .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - envnet
+    restart: always
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - timescaledb
+    networks:
+      - envnet
+    restart: always
+
+volumes:
+  airflow_metadata_data:
+  airflow_data:
+  airflow_logs:
+  timescale_data:
+  grafana_data:
+
+networks:
+  envnet:
+    driver: bridge
