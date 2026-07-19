@@ -32,6 +32,10 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_METADATA_USER:-airflow}:${AIRFLOW_METADATA_PASSWORD:-airflow}@airflow-metadata-db:5432/${AIRFLOW_METADATA_DB:-airflow}
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+    # Cold-boot on constrained hardware (e.g. t3.small) runs a slow RBAC
+    # permission-sync; the 120s default kills the gunicorn master mid-boot and
+    # crash-loops the webserver. Give it room.
+    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: "600"
     # Shared across webserver + scheduler so sessions/serialization line up.
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change-me-in-prod}
     # Empty -> Airflow uses an ephemeral key. The pipeline stores no encrypted
@@ -67,7 +71,7 @@ services:
       - envnet
     restart: always
 
-  # --- One-shot init: migrate the metadata DB and create the admin user ---
+  # --- One-shot init: migrate the Airflow metadata DB schema ---
   airflow-init:
     <<: *airflow-common
     depends_on:
@@ -76,13 +80,7 @@ services:
     entrypoint: /bin/bash
     command:
       - -c
-      - |
-        airflow db migrate
-        airflow users create \
-          --username "${AIRFLOW_ADMIN_USER:-admin}" \
-          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
-          --firstname Admin --lastname User --role Admin \
-          --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" || true
+      - airflow db migrate
     restart: on-failure
 
   scheduler:
@@ -114,6 +112,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 300s
 
   triggerer:
     <<: *airflow-common
@@ -123,6 +122,24 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
+
+  # --- One-shot: create the admin UI login AFTER the webserver has seeded the
+  # default FAB roles on boot (they don't exist yet at db-migrate time). Idempotent. ---
+  airflow-bootstrap:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USER:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
+          --firstname Admin --lastname User --role Admin \
+          --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" || true
+    depends_on:
+      webserver:
+        condition: service_healthy
+    restart: "no"
 
   # --- Serving layer: what the pipeline loads into and Grafana reads ---
   timescaledb:
