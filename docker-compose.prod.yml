@@ -1,147 +1,21 @@
-# Standalone production stack for the London Environment Time-Series pipeline.
+# Slim production stack for a free-tier box (EC2 t3.micro, ~1 GB RAM).
 #
-# This is SELF-CONTAINED and does NOT depend on the Astro CLI (`astro dev start`)
-# or on docker-compose.override.yml (which is only an override of Astro's generated
-# base). It brings up the full stack on a clean Docker host:
+# Airflow needs ~4 GB RAM and won't fit a t3.micro, so this stack drops it:
+#   timescaledb   serving layer (Postgres + Timescale extension; holds the metrics)
+#   grafana       dashboards on :3000 — the thing you screenshot for the portfolio
+#   pipeline      one-shot runner (run_pipeline.py) that loads the data; NOT a
+#                 long-running service — it's behind a compose profile so it does
+#                 not start with `up`.
 #
-#   airflow-metadata-db   Postgres for Airflow's own metadata (separate from the serving DB)
-#   airflow-init          one-shot: db migrate + create admin user, then exits
-#   scheduler             Airflow scheduler (LocalExecutor runs the tasks)
-#   webserver             Airflow UI on :8080
-#   triggerer             Airflow triggerer (deferrable operators)
-#   timescaledb           serving layer that Grafana reads (the pipeline's POSTGRES_HOST)
-#   grafana               dashboards on :3000
+# Local development still uses Airflow via `astro dev start` (docker-compose.override.yml).
 #
-# Usage on the target host:
-#   cp .env.example .env   # fill in real values
-#   docker compose -f docker-compose.prod.yml up -d --build
-#
-# Forward-compatible with the ECR/CD roadmap: set AIRFLOW_IMAGE to a pushed image
-# (e.g. <acct>.dkr.ecr.<region>.amazonaws.com/london-environment:<sha>) and the
-# airflow services will use it instead of building locally.
-
-x-airflow-common: &airflow-common
-  image: ${AIRFLOW_IMAGE:-london-environment-timeseries:prod}
-  build:
-    context: .
-    dockerfile: Dockerfile.prod
-  env_file:
-    - .env
-  environment: &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_METADATA_USER:-airflow}:${AIRFLOW_METADATA_PASSWORD:-airflow}@airflow-metadata-db:5432/${AIRFLOW_METADATA_DB:-airflow}
-    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
-    # Cold-boot on constrained hardware (e.g. t3.small) runs a slow RBAC
-    # permission-sync; the 120s default kills the gunicorn master mid-boot and
-    # crash-loops the webserver. Give it room.
-    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: "600"
-    # Shared across webserver + scheduler so sessions/serialization line up.
-    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-change-me-in-prod}
-    # Empty -> Airflow uses an ephemeral key. The pipeline stores no encrypted
-    # Airflow Connections (it reads .env directly), so this is safe to leave unset;
-    # set it if you later add encrypted Connections/Variables.
-    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
-  volumes:
-    - airflow_data:/usr/local/airflow/data
-    - airflow_logs:/usr/local/airflow/logs
-  depends_on: &airflow-common-depends
-    airflow-metadata-db:
-      condition: service_healthy
-  networks:
-    - envnet
-  restart: always
+# Usage on the box:
+#   cp .env.example .env          # fill in real values
+#   docker compose -f docker-compose.prod.yml up -d            # start timescaledb + grafana
+#   docker compose -f docker-compose.prod.yml run --rm pipeline  # run the pipeline once
+#   # then open http://<EIP>:3000 for Grafana
 
 services:
-  # --- Airflow metadata database (separate from the TimescaleDB serving layer) ---
-  airflow-metadata-db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${AIRFLOW_METADATA_USER:-airflow}
-      POSTGRES_PASSWORD: ${AIRFLOW_METADATA_PASSWORD:-airflow}
-      POSTGRES_DB: ${AIRFLOW_METADATA_DB:-airflow}
-    volumes:
-      - airflow_metadata_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${AIRFLOW_METADATA_USER:-airflow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - envnet
-    restart: always
-
-  # --- One-shot init: migrate the Airflow metadata DB schema ---
-  airflow-init:
-    <<: *airflow-common
-    depends_on:
-      airflow-metadata-db:
-        condition: service_healthy
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - airflow db migrate
-    restart: on-failure
-
-  scheduler:
-    <<: *airflow-common
-    command: airflow scheduler
-    depends_on:
-      airflow-metadata-db:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  webserver:
-    <<: *airflow-common
-    command: airflow webserver
-    ports:
-      - "8080:8080"
-    depends_on:
-      airflow-metadata-db:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 300s
-
-  triggerer:
-    <<: *airflow-common
-    command: airflow triggerer
-    depends_on:
-      airflow-metadata-db:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-
-  # --- One-shot: create the admin UI login AFTER the webserver has seeded the
-  # default FAB roles on boot (they don't exist yet at db-migrate time). Idempotent. ---
-  airflow-bootstrap:
-    <<: *airflow-common
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        airflow users create \
-          --username "${AIRFLOW_ADMIN_USER:-admin}" \
-          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
-          --firstname Admin --lastname User --role Admin \
-          --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" || true
-    depends_on:
-      webserver:
-        condition: service_healthy
-    restart: "no"
-
-  # --- Serving layer: what the pipeline loads into and Grafana reads ---
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     env_file:
@@ -173,12 +47,30 @@ services:
       - envnet
     restart: always
 
+  # One-shot loader. Behind the "run" profile so `up` never starts it.
+  # Run it with: docker compose -f docker-compose.prod.yml run --rm pipeline
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    image: london-environment-pipeline:latest
+    env_file:
+      - .env
+    volumes:
+      - pipeline_data:/app/data
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    networks:
+      - envnet
+    restart: "no"
+    profiles:
+      - run
+
 volumes:
-  airflow_metadata_data:
-  airflow_data:
-  airflow_logs:
   timescale_data:
   grafana_data:
+  pipeline_data:
 
 networks:
   envnet:

@@ -26,9 +26,9 @@ variable "ssh_key_name" {
 }
 
 variable "ec2_instance_type" {
-  description = "EC2 instance type for the Airflow/Grafana host"
+  description = "EC2 instance type for the Timescale/Grafana host. t3.micro is free-tier eligible; the pipeline runs one-shot with a swapfile (see user_data) to survive memory spikes on 1 GB."
   type        = string
-  default     = "t3.small"
+  default     = "t3.micro"
 }
 
 variable "root_volume_size" {

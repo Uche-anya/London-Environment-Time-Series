@@ -183,6 +183,10 @@ resource "aws_instance" "app_server" {
     volume_type = "gp3"
   }
 
+  # Slim free-tier host: Docker + a swapfile. No Airflow/Astro here — the stack
+  # is timescaledb + grafana + a one-shot pipeline run (docker-compose.prod.yml).
+  # The 2 GB swap lets the one-time pipeline run (pandas/DuckDB/GX) survive memory
+  # spikes on a 1 GB t3.micro; it's slower under swap but this is a batch job.
   user_data = <<-EOF
               #!/bin/bash
               set -e
@@ -192,10 +196,16 @@ resource "aws_instance" "app_server" {
 
               systemctl enable docker
               systemctl start docker
-
               usermod -aG docker ubuntu
 
-              curl -sSL install.astronomer.io | bash || true
+              # 2 GB swap so the one-shot pipeline run doesn't OOM on 1 GB RAM.
+              if [ ! -f /swapfile ]; then
+                fallocate -l 2G /swapfile
+                chmod 600 /swapfile
+                mkswap /swapfile
+                swapon /swapfile
+                echo '/swapfile none swap sw 0 0' >> /etc/fstab
+              fi
               EOF
 
   tags = {

@@ -1,0 +1,21 @@
+# Lean one-shot pipeline runner (no Airflow).
+#
+# The dev image is astro-runtime (~3.5 GB, Airflow-based) which won't fit a
+# free-tier t3.micro. This image is just Python + the pipeline deps + the code,
+# and runs run_pipeline.py once. Local dev still uses Airflow via `astro dev`.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Only the code the pipeline needs at runtime (no dags/ — that's Airflow-only).
+COPY pipelines/    /app/pipelines/
+COPY src/          /app/src/
+COPY data_quality/ /app/data_quality/
+COPY sql/          /app/sql/
+COPY run_pipeline.py /app/run_pipeline.py
+
+CMD ["python", "run_pipeline.py"]
