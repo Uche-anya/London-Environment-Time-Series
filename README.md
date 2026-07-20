@@ -217,6 +217,7 @@ Scope calls I made on purpose, and what I'd change if this carried real traffic:
 - **Monitoring is visible, not pushed.** The dashboard carries a freshness panel showing `MAX(reading_date)` and days-behind per table, so stale data is obvious at a glance. Nothing alerts, though: a failed run still needs someone to look. Wiring the exit code to SNS or Slack is the next step, and I'd alert on freshness rather than on job failure, since a job that never fires produces no failure signal at all.
 - **Bronze through gold stay on the instance** rather than persisting to S3 as a lake. At this volume rebuilding costs seconds; at ten times the size I'd write them back.
 - **Scheduling is cron, not an orchestrator.** Right for one weekly job; the moment there are several DAGs with real dependencies between them, that argument flips back toward managed Airflow.
+- **Source ingestion into S3 is manual.** Everything downstream of the bucket is automated, but new DEFRA files still land there by hand, which is why weather stays current while air quality drifts behind. A scheduled job pulling the current-year file from DEFRA into the bucket, plus moving cron from weekly to daily, would close that loop and hold the dashboard within a day of source. The freshness panel already makes the drift visible, which was the point of building it first.
 
 ---
 
