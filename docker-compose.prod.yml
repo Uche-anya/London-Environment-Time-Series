@@ -1,20 +1,3 @@
-# Slim production stack for a free-tier box (EC2 t3.micro, ~1 GB RAM).
-#
-# Airflow needs ~4 GB RAM and won't fit a t3.micro, so this stack drops it:
-#   timescaledb   serving layer (Postgres + Timescale extension; holds the metrics)
-#   grafana       dashboards on :3000 — the thing you screenshot for the portfolio
-#   pipeline      one-shot runner (run_pipeline.py) that loads the data; NOT a
-#                 long-running service — it's behind a compose profile so it does
-#                 not start with `up`.
-#
-# Local development still uses Airflow via `astro dev start` (docker-compose.override.yml).
-#
-# Usage on the box:
-#   cp .env.example .env          # fill in real values
-#   docker compose -f docker-compose.prod.yml up -d            # start timescaledb + grafana
-#   docker compose -f docker-compose.prod.yml run --rm pipeline  # run the pipeline once
-#   # then open http://<EIP>:3000 for Grafana
-
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg16

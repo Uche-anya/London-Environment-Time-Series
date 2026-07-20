@@ -1,7 +1,5 @@
 apiVersion: 1
 
-# Loads dashboard JSON files from disk on startup. The compose file mounts
-# ./grafana/dashboards to the path below.
 providers:
   - name: London Environment
     orgId: 1

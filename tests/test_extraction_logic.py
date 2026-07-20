@@ -28,7 +28,6 @@ def test_current_and_previous_year_are_always_refetched():
 def test_frozen_year_is_fetched_only_when_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(extract_weather, "RAW_WEATHER_BASE", tmp_path)
 
-    # Closed year with no output yet -> must fetch (first-time backfill).
     assert extract_weather.needs_extraction(2000, 2030) is True
 
     # Once its output exists, the frozen year is skipped.
@@ -51,7 +50,6 @@ def test_matching_size_is_skipped(tmp_path):
 
 
 def test_size_mismatch_is_redownloaded(tmp_path):
-    # The growing current-year file changes size, so it must re-download.
     local_path = tmp_path / "london_bloomsbury_2026.csv"
-    local_path.write_bytes(b"0123456789")  # 10 bytes
+    local_path.write_bytes(b"0123456789") 
     assert extract_raw_s3.is_already_downloaded(local_path, {"Size": 4096}) is False
