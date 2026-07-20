@@ -214,7 +214,7 @@ Scope calls I made on purpose, and what I'd change if this carried real traffic:
 
 - **Terraform state is local.** Fine for one operator; a team needs an S3 backend with DynamoDB locking so two applies can't race each other.
 - **Data volumes live on the instance.** Replacing the box means re-running the pipeline to repopulate. A dedicated EBS volume with snapshots, or a managed database, removes that.
-- **No alerting.** Failures surface as a non-zero exit code and nothing else. Wiring that to SNS or Slack, plus a freshness panel showing `MAX(reading_date)` per table, is the obvious next step.
+- **Monitoring is visible, not pushed.** The dashboard carries a freshness panel showing `MAX(reading_date)` and days-behind per table, so stale data is obvious at a glance. Nothing alerts, though: a failed run still needs someone to look. Wiring the exit code to SNS or Slack is the next step, and I'd alert on freshness rather than on job failure, since a job that never fires produces no failure signal at all.
 - **Bronze through gold stay on the instance** rather than persisting to S3 as a lake. At this volume rebuilding costs seconds; at ten times the size I'd write them back.
 - **Scheduling is cron, not an orchestrator.** Right for one weekly job; the moment there are several DAGs with real dependencies between them, that argument flips back toward managed Airflow.
 
