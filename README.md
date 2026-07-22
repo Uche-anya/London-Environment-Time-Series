@@ -81,6 +81,10 @@ extract_raw_s3  → bronze_air_quality → silver_air_quality ┐
 extract_weather → bronze_weather    → silver_weather     ┘
 ```
 
+![A successful DAG run in the local Airflow UI](assets/airflow-dag.png)
+
+A manual run of the DAG in the local Airflow UI: both extraction branches, the bronze and silver builds for each source, the gold build and the Great Expectations validation, every task green, 1m 10s end to end.
+
 **In production, without Airflow.** `run_pipeline.py` walks those same ten stages in one process and exits non-zero if any of them throws. A cron entry on the instance runs it Mondays at 06:00 UTC while the box is up, appending output to `~/pipeline.log`.
 
 Both call identical functions. The DAG imports `pipelines.create_gold.main`; so does the runner. There's no second copy of the logic to fall out of sync.
@@ -118,6 +122,16 @@ docker compose -f docker-compose.prod.yml run --rm pipeline  # one-shot load
 ```
 
 Grafana provisions its own datasource and dashboard from files at startup, so a fresh box comes up with the dashboard already wired, including a data-freshness panel showing `MAX(reading_date)` and days-behind per table. That panel ignores the dashboard time picker on purpose; narrowing the range can't make stale data look fresh.
+
+### The pipeline in CI and ECR
+
+![GitHub Actions run building and pushing the pipeline image](assets/ci-build-and-push.png)
+
+The build-and-push workflow after a manual trigger: checkout, temporary AWS credentials over OIDC, ECR login, build and push, done in 1m 31s. No secrets beyond a role ARN.
+
+![Pipeline image in the ECR repository](assets/ecr-pipeline-image.png)
+
+The result in ECR: one image, tagged both `latest` and the full git SHA that built it (`70f1fe4…`), 259.68 MB compressed. Any container running in production traces back to an exact commit.
 
 ---
 
