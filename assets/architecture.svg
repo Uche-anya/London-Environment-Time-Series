@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 830" font-family="'Segoe Print','Comic Sans MS',cursive">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9" fill="none" stroke="#343a40" stroke-width="1.6" stroke-linecap="round"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="830" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="640" y="34" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e1e1e">London Environmental Time-Series Pipeline</text>
+
+  <!-- ============ DATA SOURCES GROUP ============ -->
+  <rect x="40" y="60" width="360" height="190" rx="10" fill="none" stroke="#868e96" stroke-width="1.6" stroke-dasharray="7 5"/>
+  <text x="56" y="84" font-size="15" fill="#868e96">data sources</text>
+
+  <rect x="70" y="96" width="300" height="58" rx="8" fill="#fff9db" stroke="#343a40" stroke-width="1.8"/>
+  <text x="220" y="120" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">DEFRA UK-AIR</text>
+  <text x="220" y="140" text-anchor="middle" font-size="11.5" fill="#495057">hourly pollutant CSVs · London Bloomsbury</text>
+
+  <rect x="70" y="172" width="300" height="58" rx="8" fill="#fff9db" stroke="#343a40" stroke-width="1.8"/>
+  <text x="220" y="196" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">Open-Meteo API</text>
+  <text x="220" y="216" text-anchor="middle" font-size="11.5" fill="#495057">ERA5 hourly weather · ~5-day lag</text>
+
+  <!-- ============ GITHUB GROUP ============ -->
+  <rect x="880" y="60" width="360" height="190" rx="10" fill="none" stroke="#868e96" stroke-width="1.6" stroke-dasharray="7 5"/>
+  <text x="896" y="84" font-size="15" fill="#868e96">GitHub</text>
+
+  <rect x="910" y="96" width="300" height="50" rx="8" fill="#e9ecef" stroke="#343a40" stroke-width="1.8"/>
+  <text x="1060" y="118" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">repo · dev / main</text>
+  <text x="1060" y="136" text-anchor="middle" font-size="11.5" fill="#495057">CI: compileall + 17 pytest tests</text>
+
+  <rect x="910" y="170" width="300" height="60" rx="8" fill="#e9ecef" stroke="#343a40" stroke-width="1.8"/>
+  <text x="1060" y="194" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">GitHub Actions</text>
+  <text x="1060" y="214" text-anchor="middle" font-size="11.5" fill="#495057">builds Dockerfile.pipeline · tags latest + SHA</text>
+
+  <line x1="1060" y1="146" x2="1060" y2="166" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+  <!-- ============ AWS GROUP ============ -->
+  <rect x="40" y="290" width="1200" height="400" rx="12" fill="none" stroke="#f08c00" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="58" y="316" font-size="16" fill="#f08c00" font-weight="bold">AWS · eu-north-1</text>
+
+  <!-- S3 -->
+  <rect x="80" y="350" width="250" height="76" rx="8" fill="#ffec99" stroke="#343a40" stroke-width="1.8"/>
+  <text x="205" y="378" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">S3 raw bucket</text>
+  <text x="205" y="398" text-anchor="middle" font-size="11.5" fill="#495057">versioned · encrypted</text>
+  <text x="205" y="414" text-anchor="middle" font-size="11.5" fill="#495057">raw/defra/.../year=*.csv</text>
+
+  <!-- ECR -->
+  <rect x="950" y="350" width="250" height="76" rx="8" fill="#d0bfff" stroke="#343a40" stroke-width="1.8"/>
+  <text x="1075" y="378" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">ECR</text>
+  <text x="1075" y="398" text-anchor="middle" font-size="11.5" fill="#495057">pipeline image ≈260 MB</text>
+  <text x="1075" y="414" text-anchor="middle" font-size="11.5" fill="#495057">tags: latest + git SHA</text>
+
+  <!-- EC2 group -->
+  <rect x="380" y="340" width="520" height="330" rx="10" fill="#e7f5ff" stroke="#1971c2" stroke-width="1.8" stroke-dasharray="7 5"/>
+  <text x="398" y="364" font-size="14" fill="#1971c2" font-weight="bold">EC2 t3.micro · Docker · 2 GB swap · Elastic IP</text>
+
+  <!-- pipeline container -->
+  <rect x="405" y="384" width="205" height="160" rx="8" fill="#a5d8ff" stroke="#343a40" stroke-width="1.8"/>
+  <text x="507" y="408" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">pipeline (one-shot)</text>
+  <text x="507" y="430" text-anchor="middle" font-size="11.5" fill="#1e3050">run_pipeline.py · 10 stages</text>
+  <text x="507" y="448" text-anchor="middle" font-size="11.5" fill="#1e3050">raw → bronze → silver → gold</text>
+  <text x="507" y="466" text-anchor="middle" font-size="11.5" fill="#1e3050">DuckDB · Parquet</text>
+  <text x="507" y="484" text-anchor="middle" font-size="11.5" fill="#1e3050">Great Expectations gate</text>
+  <text x="507" y="506" text-anchor="middle" font-size="11" fill="#5f3dc4">⏰ cron · Mon 06:00 UTC</text>
+  <text x="507" y="526" text-anchor="middle" font-size="11" fill="#5f3dc4">runs 37 s · exits</text>
+
+  <!-- TimescaleDB -->
+  <rect x="650" y="384" width="220" height="66" rx="8" fill="#b2f2bb" stroke="#343a40" stroke-width="1.8"/>
+  <text x="760" y="408" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">TimescaleDB</text>
+  <text x="760" y="428" text-anchor="middle" font-size="11.5" fill="#2b5233">3 gold tables · 285k+ rows</text>
+
+  <!-- Grafana -->
+  <rect x="650" y="486" width="220" height="72" rx="8" fill="#ffc9c9" stroke="#343a40" stroke-width="1.8"/>
+  <text x="760" y="510" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">Grafana :3000</text>
+  <text x="760" y="530" text-anchor="middle" font-size="11.5" fill="#5f2120">provisioned dashboard</text>
+  <text x="760" y="546" text-anchor="middle" font-size="11.5" fill="#5f2120">+ data-freshness panel</text>
+
+  <!-- IAM note -->
+  <rect x="405" y="576" width="205" height="72" rx="8" fill="#f1f3f5" stroke="#868e96" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="507" y="600" text-anchor="middle" font-size="12" font-weight="bold" fill="#495057">instance IAM role</text>
+  <text x="507" y="618" text-anchor="middle" font-size="11" fill="#495057">S3 read · ECR pull</text>
+  <text x="507" y="636" text-anchor="middle" font-size="11" fill="#495057">no stored keys</text>
+
+  <!-- Browser -->
+  <rect x="950" y="500" width="250" height="58" rx="8" fill="#ffffff" stroke="#343a40" stroke-width="1.8"/>
+  <text x="1075" y="524" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">browser</text>
+  <text x="1075" y="544" text-anchor="middle" font-size="11.5" fill="#495057">allowed IP only (security group)</text>
+
+  <!-- ============ BOTTOM ROW ============ -->
+  <rect x="80" y="720" width="380" height="70" rx="8" fill="#ffd8a8" stroke="#343a40" stroke-width="1.8"/>
+  <text x="270" y="748" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e1e1e">Terraform</text>
+  <text x="270" y="770" text-anchor="middle" font-size="11.5" fill="#5f3a12">S3 · EC2 · ECR · IAM roles · OIDC provider · SG</text>
+
+  <rect x="520" y="720" width="380" height="70" rx="8" fill="#f1f3f5" stroke="#868e96" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="710" y="748" text-anchor="middle" font-size="13" font-weight="bold" fill="#495057">local dev: Airflow DAG (astro dev)</text>
+  <text x="710" y="770" text-anchor="middle" font-size="11.5" fill="#495057">same task functions · no Airflow in production (1 GB RAM)</text>
+
+  <!-- ============ ARROWS ============ -->
+  <!-- DEFRA -> S3 (manual, dashed) -->
+  <line x1="205" y1="154" x2="205" y2="346" stroke="#343a40" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+  <text x="215" y="270" font-size="11.5" fill="#495057">manual upload</text>
+
+  <!-- Open-Meteo -> pipeline -->
+  <path d="M 370 201 C 490 201 480 300 495 380" fill="none" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="452" y="250" font-size="11.5" fill="#495057">fetch current + prev year</text>
+
+  <!-- S3 -> pipeline -->
+  <line x1="330" y1="410" x2="401" y2="430" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="300" y="452" font-size="11.5" fill="#495057">sync · skip unchanged</text>
+
+  <!-- Actions -> ECR (OIDC) -->
+  <line x1="1070" y1="230" x2="1075" y2="346" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="1085" y="290" font-size="11.5" fill="#495057">push · OIDC</text>
+
+  <!-- ECR -> EC2 -->
+  <line x1="950" y1="400" x2="904" y2="400" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="885" y="388" text-anchor="end" font-size="11.5" fill="#495057">docker pull</text>
+
+  <!-- pipeline -> TimescaleDB -->
+  <line x1="610" y1="417" x2="646" y2="417" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="628" y="405" text-anchor="middle" font-size="11.5" fill="#495057">upsert</text>
+
+  <!-- TimescaleDB -> Grafana -->
+  <line x1="760" y1="450" x2="760" y2="482" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="772" y="470" font-size="11.5" fill="#495057">SQL</text>
+
+  <!-- Grafana -> browser -->
+  <line x1="870" y1="527" x2="946" y2="527" stroke="#343a40" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+  <!-- Terraform -> AWS -->
+  <line x1="270" y1="720" x2="270" y2="694" stroke="#343a40" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+  <text x="282" y="712" font-size="11.5" fill="#495057">terraform apply</text>
+</svg>
