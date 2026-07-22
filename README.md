@@ -24,6 +24,12 @@ GitHub Actions builds the image and pushes it to ECR; the EC2 instance pulls and
 
 ---
 
+## Architecture
+
+![Architecture: sources into S3, CI building the image into ECR over OIDC, and an EC2 box running the one-shot pipeline, TimescaleDB and Grafana](assets/architecture.svg)
+
+---
+
 ## Data sources
 
 **DEFRA UK-AIR** supplies hourly air quality for the London Bloomsbury monitoring station: NO, NO₂, NOx, O₃, PM10, PM2.5 and SO₂. Those CSVs live in S3:
