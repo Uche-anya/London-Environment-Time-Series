@@ -1,9 +1,4 @@
--- TimescaleDB schema for the London Environment serving layer.
---
--- This mirrors the DDL executed programmatically in
--- pipelines/create_timescale_tables.py. It is kept here as a readable
--- reference and for manual / out-of-band setup. The pipeline remains the
--- source of truth at runtime.
+
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 

@@ -1,6 +1,3 @@
-# -----------------------------
-# S3 raw data bucket
-# -----------------------------
 
 resource "aws_s3_bucket" "raw_data" {
   bucket = var.s3_bucket_name
@@ -39,11 +36,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "raw_data_encrypti
   }
 }
 
-
-# -----------------------------
-# Ubuntu AMI
-# -----------------------------
-
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical Ubuntu official AWS account
@@ -59,10 +51,6 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-
-# -----------------------------
-# IAM role for EC2 to read S3
-# -----------------------------
 
 resource "aws_iam_role" "ec2_s3_read_role" {
   name = "${var.project_name}-ec2-s3-read-role"
