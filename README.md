@@ -22,7 +22,7 @@ Last verified: **31 July 2026**.
 | Raw S3 data | Current | Both sources have yearly objects from 2022 through 2026. |
 | EC2 | Running | The existing `t3.small` host is running TimescaleDB and Grafana. |
 | Downstream pipeline | Production run verified | The main-branch ECR image completed the full S3-to-Grafana pipeline successfully in 25 seconds. |
-| Daily cron | Available; installation must be verified | When installed, it runs the pipeline at 06:00 UTC. Confirm with `crontab -l`. |
+| Daily cron | Installed | The guarded pipeline runner executes at 06:00 UTC, writes to `~/pipeline.log` and prevents overlapping runs with `flock`. |
 | Tests | Passing | 30 tests pass and the Terraform configuration validates. |
 
 The latest live ingestion checks found:
@@ -276,14 +276,12 @@ of its configured size, AMI or `user_data`. Do not run an unreviewed full
 drift first, and apply only ingestion targets that have been explicitly
 reviewed in a saved Terraform plan.
 
-The one-shot production run is verified. Confirm the recurring schedule before
-treating downstream processing as automated:
+The one-shot production run and recurring cron installation are verified. The
+schedule can be inspected together with its latest output using:
 
 ```bash
 crontab -l
-# If the london-environment-pipeline-daily entry is absent:
-chmod +x scripts/install_pipeline_cron.sh
-./scripts/install_pipeline_cron.sh
+tail -n 100 ~/pipeline.log
 ```
 
 ## Latest verified production run
