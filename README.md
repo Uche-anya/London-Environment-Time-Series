@@ -20,8 +20,9 @@ Last verified: **31 July 2026**.
 | DEFRA ingestion | Deployed and scheduled | A Lambda refreshes the Bloomsbury CSV files in S3 every day at 05:30 Europe/London. |
 | Weather ingestion | Deployed and scheduled | A separate Lambda refreshes Open-Meteo ERA5 JSON in S3 every day at 05:20 Europe/London. |
 | Raw S3 data | Current | Both sources have yearly objects from 2022 through 2026. |
-| EC2 | Stopped | Source ingestion continues, but transformations, TimescaleDB and Grafana do not run while the instance is stopped. |
-| Downstream cron | Prepared, not installed on the stopped instance | When installed, it runs the S3-to-dashboard pipeline every day at 06:00 UTC. |
+| EC2 | Running | The existing `t3.small` host is running TimescaleDB and Grafana. |
+| Downstream pipeline | Production run verified | The main-branch ECR image completed the full S3-to-Grafana pipeline successfully in 25 seconds. |
+| Daily cron | Available; installation must be verified | When installed, it runs the pipeline at 06:00 UTC. Confirm with `crontab -l`. |
 | Tests | Passing | 30 tests pass and the Terraform configuration validates. |
 
 The latest live ingestion checks found:
@@ -267,39 +268,39 @@ defined in `terraform/defra_ingestion.tf` and `terraform/weather_ingestion.tf`.
 
 ### Important current deployment note
 
-The existing EC2 instance is stopped. A complete Terraform plan currently
+The existing EC2 instance is running, and the current main-branch ECR image has
+completed a successful production load. A complete Terraform plan still
 contains unrelated EC2 drift and may propose replacing that instance because
 of its configured size, AMI or `user_data`. Do not run an unreviewed full
 `terraform apply` merely to update ingestion resources. Reconcile the server
 drift first, and apply only ingestion targets that have been explicitly
 reviewed in a saved Terraform plan.
 
-When the EC2 instance is started again, update the checkout and pipeline image,
-start TimescaleDB and Grafana, run the pipeline once, and only then install the
-daily cron:
+The one-shot production run is verified. Confirm the recurring schedule before
+treating downstream processing as automated:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml pull pipeline
-docker compose -f docker-compose.prod.yml run --rm pipeline
+crontab -l
+# If the london-environment-pipeline-daily entry is absent:
 chmod +x scripts/install_pipeline_cron.sh
 ./scripts/install_pipeline_cron.sh
 ```
 
-## Last completed downstream benchmark
+## Latest verified production run
 
-The last verified full S3-to-Grafana run completed in approximately 37 seconds
-and loaded:
+On 31 July 2026, the main-branch production image completed all ten stages in
+25 seconds. Great Expectations passed for daily air quality, daily weather and
+the hourly environment join before TimescaleDB was updated.
 
 | Table | Rows | Grain |
 | --- | ---: | --- |
-| `daily_air_quality_metrics` | 11,361 | one day and pollutant |
-| `daily_weather_metrics` | 1,661 | one day |
-| `hourly_environment_metrics` | 272,496 | one timestamp and pollutant joined to weather |
+| `daily_air_quality_metrics` | 11,711 | one day and pollutant |
+| `daily_weather_metrics` | 1,668 | one day |
+| `hourly_environment_metrics` | 280,896 | one timestamp and pollutant joined to weather |
 
-All 272,496 hourly rows in that run matched a weather observation. These are a
-historical benchmark, not the current S3 counts: raw ingestion has continued
-while EC2 has been stopped.
+These are the current serving-table counts from that verified run. Missing
+source measurements remain SQL `NULL` values rather than being converted to
+zero, and the quality gate accepted the observed completeness and join coverage.
 
 ## Repository guide
 
