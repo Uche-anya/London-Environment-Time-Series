@@ -30,7 +30,7 @@ jobs:
 
       - name: Compile Python files
         run: |
-          python -m compileall dags pipelines src data_quality tests
+          python -m compileall dags pipelines src data_quality lambda_src tests
 
       - name: Run pytest
         run: |
