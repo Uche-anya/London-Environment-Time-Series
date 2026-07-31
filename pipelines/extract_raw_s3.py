@@ -1,4 +1,6 @@
 import os
+import re
+from datetime import date
 from pathlib import Path
 
 import boto3
@@ -57,6 +59,16 @@ def is_already_downloaded(local_path: Path, remote_obj: dict) -> bool:
     return local_path.stat().st_size == remote_obj["Size"]
 
 
+def is_recent_year_key(key: str, current_year: int | None = None) -> bool:
+    """Recent files can be revised without changing their byte size."""
+    match = re.search(r"/year=(\d{4})/", key)
+    if not match:
+        return False
+
+    year = int(match.group(1))
+    return year >= (current_year or date.today().year) - 1
+
+
 def download_s3_object(bucket_name: str, key: str, local_path: Path) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -85,7 +97,7 @@ def main() -> None:
         key = obj["Key"]
         local_path = local_path_for_s3_key(key, S3_RAW_PREFIX)
 
-        if is_already_downloaded(local_path, obj):
+        if not is_recent_year_key(key) and is_already_downloaded(local_path, obj):
             print(f"Skipping unchanged s3://{S3_BUCKET_NAME}/{key}")
             continue
 
