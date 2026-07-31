@@ -823,6 +823,144 @@
             }
           }
         }
+      },
+      "panel-20": {
+        "kind": "Panel",
+        "spec": {
+          "id": 20,
+          "title": "Data Freshness (latest reading per table)",
+          "description": "How current each serving table is. Deliberately NOT filtered by the dashboard time range, so narrowing the time picker cannot make stale data look fresh. days_behind is measured against today.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "efmiwcfbgjrwgc"
+                      },
+                      "spec": {
+                        "dataset": "environment_db",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT 'daily_air_quality_metrics' AS table_name,\n       MAX(reading_date) AS latest_reading,\n       (CURRENT_DATE - MAX(reading_date)) AS days_behind\nFROM daily_air_quality_metrics\nUNION ALL\nSELECT 'daily_weather_metrics',\n       MAX(reading_date),\n       (CURRENT_DATE - MAX(reading_date))\nFROM daily_weather_metrics\nUNION ALL\nSELECT 'hourly_environment_metrics',\n       MAX(reading_date),\n       (CURRENT_DATE - MAX(reading_date))\nFROM hourly_environment_metrics\nORDER BY table_name;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "13.0.1+security-01",
+            "spec": {
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 14,
+                        "color": "yellow"
+                      },
+                      {
+                        "value": 30,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "days_behind"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-background"
+                        }
+                      },
+                      {
+                        "id": "unit",
+                        "value": "d"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "table_name"
+                    },
+                    "properties": [
+                      {
+                        "id": "custom.width",
+                        "value": 320
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -919,6 +1057,19 @@
                 "name": "panel-10"
               }
             }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 16,
+              "width": 24,
+              "height": 5,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-20"
+              }
+            }
           }
         ]
       }
@@ -930,7 +1081,7 @@
     "timeSettings": {
       "timezone": "browser",
       "from": "2022-01-22T00:00:00.000Z",
-      "to": "2025-12-31T23:59:59.000Z",
+      "to": "now",
       "autoRefresh": "",
       "autoRefreshIntervals": [
         "5s",

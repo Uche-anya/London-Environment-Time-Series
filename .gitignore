@@ -21,6 +21,9 @@ data/raw/
 .DS_Store
 .vscode/
 
+# Personal notes — kept local, never published
+docs/
+
 # Terraform
 .terraform/
 *.tfstate
