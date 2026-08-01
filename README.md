@@ -35,24 +35,7 @@ archive is published with an approximate five-day delay.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    DEFRA[DEFRA UK-AIR CSV] --> DL[DEFRA Lambda]
-    WEATHER[Open-Meteo ERA5 API] --> WL[Weather Lambda]
-    ES[EventBridge Scheduler] --> DL
-    ES --> WL
-    DL --> S3[(Versioned raw S3 bucket)]
-    WL --> S3
-
-    S3 --> SYNC[S3 sync on EC2]
-    SYNC --> TRANSFORM[Bronze / Silver / Gold transforms]
-    TRANSFORM --> QUALITY[Great Expectations]
-    QUALITY --> TS[(TimescaleDB)]
-    TS --> GRAFANA[Grafana]
-
-    GH[GitHub Actions via OIDC] --> ECR[Amazon ECR]
-    ECR --> SYNC
-```
+![London Environmental Time-Series production architecture](assets/architecture.svg)
 
 There are two deliberately separate operating layers:
 
