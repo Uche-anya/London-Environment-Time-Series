@@ -245,6 +245,32 @@ GitHub Actions runs tests and builds the production image. OIDC supplies
 temporary AWS credentials, so long-lived AWS keys are not stored in GitHub.
 Images are pushed to ECR with both `latest` and commit-SHA tags.
 
+### Deployed AWS resources
+
+**DEFRA air-quality ingestion.** EventBridge Scheduler invokes this Lambda
+independently to download and validate the London Bloomsbury UK-AIR CSV files
+before writing them to the raw S3 prefix.
+
+![Deployed DEFRA air-quality ingestion Lambda with its EventBridge Scheduler trigger](assets/lambda%20air%20quality.png)
+
+**Open-Meteo weather ingestion.** A separate scheduled Lambda collects and
+validates ERA5 weather observations, keeping a failure or delay in one source
+from blocking the other.
+
+![Deployed Open-Meteo ERA5 weather ingestion Lambda with its EventBridge Scheduler trigger](assets/lambda%20weather.png)
+
+**CloudWatch monitoring.** Each ingestion Lambda has its own error alarm. Both
+alarms are shown in the healthy `OK` state, meaning no Lambda errors crossed
+the configured threshold during the displayed period.
+
+![CloudWatch overview showing both Lambda error alarms in the OK state](assets/london%20cloudwatch.png)
+
+**Container delivery through ECR.** The private ECR repository stores the
+production pipeline image with a moving `latest` tag and an immutable
+commit-SHA tag. EC2 pulls this image to run the downstream pipeline.
+
+![Amazon ECR repository containing the latest and commit-tagged production pipeline images](assets/london%20ecr.png)
+
 See [`DEPLOY.md`](DEPLOY.md) for the existing ECR, EC2, TimescaleDB and
 Grafana deployment guide. The source schedules and their AWS resources are
 defined in `terraform/defra_ingestion.tf` and `terraform/weather_ingestion.tf`.
