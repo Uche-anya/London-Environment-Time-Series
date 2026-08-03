@@ -359,16 +359,10 @@ zero, and the quality gate accepted the observed completeness and join coverage.
 
 **Uche Anya**
 
-I built this as more than a dashboard: it is a production-minded data system
-that keeps ingestion independent, makes transformations repeatable, rejects bad
-data before it reaches the serving layer, and exposes the result for people to
-use.
-
 If you are an engineering manager building dependable data products, or a data
 engineer who enjoys debating architecture and trade-offs, I would love to hear
 from you. Reach out about opportunities, collaboration, or the decisions behind
-this project. If something could be stronger—or deserves more explanation—I
-welcome the challenge. The best systems get better under thoughtful scrutiny.
+this project. 
 
 - Connect with me on [LinkedIn](https://www.linkedin.com/in/uche-anya-0b49a0167)
 - Email me at [kingsley_anya@hotmail.com](mailto:kingsley_anya@hotmail.com)
